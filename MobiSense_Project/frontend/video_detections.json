@@ -1,0 +1,72 @@
+[
+  {
+    "id": "video_issue_001",
+    "type": "pothole",
+    "confidence": 0.892,
+    "frame_number": 30,
+    "timestamp_in_video": 1.0
+  },
+  {
+    "id": "video_issue_002",
+    "type": "pothole",
+    "confidence": 0.764,
+    "frame_number": 75,
+    "timestamp_in_video": 2.5
+  },
+  {
+    "id": "video_issue_003",
+    "type": "pothole",
+    "confidence": 0.941,
+    "frame_number": 120,
+    "timestamp_in_video": 4.0
+  },
+  {
+    "id": "video_issue_004",
+    "type": "pothole",
+    "confidence": 0.815,
+    "frame_number": 195,
+    "timestamp_in_video": 6.5
+  },
+  {
+    "id": "video_issue_005",
+    "type": "pothole",
+    "confidence": 0.688,
+    "frame_number": 270,
+    "timestamp_in_video": 9.0
+  },
+  {
+    "id": "video_issue_006",
+    "type": "pothole",
+    "confidence": 0.913,
+    "frame_number": 345,
+    "timestamp_in_video": 11.5
+  },
+  {
+    "id": "video_issue_007",
+    "type": "pothole",
+    "confidence": 0.854,
+    "frame_number": 420,
+    "timestamp_in_video": 14.0
+  },
+  {
+    "id": "video_issue_008",
+    "type": "pothole",
+    "confidence": 0.792,
+    "frame_number": 510,
+    "timestamp_in_video": 17.0
+  },
+  {
+    "id": "video_issue_009",
+    "type": "pothole",
+    "confidence": 0.957,
+    "frame_number": 585,
+    "timestamp_in_video": 19.5
+  },
+  {
+    "id": "video_issue_010",
+    "type": "pothole",
+    "confidence": 0.723,
+    "frame_number": 660,
+    "timestamp_in_video": 22.0
+  }
+]

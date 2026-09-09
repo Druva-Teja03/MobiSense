@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MobiSense — Video Detection Feed &amp; Synced Telemetry | Smart India Hackathon</title>
+  <meta name="description" content="MobiSense AI Video Feed - Real-time synchronization of pothole, traffic, and garbage detections with telemetry tracking.">
+  
+  <!-- Typography: Inter font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Core Civic-Tech Stylesheets -->
+  <link rel="stylesheet" href="dashboard.css">
+  <link rel="stylesheet" href="feed.css">
+</head>
+<body>
+
+  <div class="app-container">
+
+    <!-- ======================================================================
+         Top Municipal Navigation & Telemetry Bar
+         ====================================================================== -->
+    <header class="header-bar">
+      <!-- Left: Branding & Inter-page Navigation -->
+      <div class="header-left">
+        <img src="logo.jpeg" alt="MobiSense Logo" class="brand-logo">
+        <div class="brand-info">
+          <div class="brand-title-wrap">
+            <h1 class="brand-title">MobiSense</h1>
+          </div>
+          <span class="brand-subtitle">Municipal Incident &amp; Road Safety Monitor</span>
+        </div>
+
+        <!-- Navigation Switcher: Map vs Video Feed -->
+        <nav class="header-nav-links" aria-label="Page Navigation">
+          <a href="dashboard.html" class="nav-link-btn" title="GIS Incident Map View">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span>GIS Map</span>
+          </a>
+          <a href="feed.html" class="nav-link-btn is-active" title="AI Video Detection Feed">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+            <span>Video Feed</span>
+          </a>
+        </nav>
+      </div>
+
+      <!-- Center: Active Feed Category Indicator -->
+      <div class="header-center">
+        <div class="live-summary-badge" id="active-category-pill">
+          <span class="pulse-indicator">
+            <span class="pulse-ring"></span>
+            <span class="pulse-dot"></span>
+          </span>
+          <span class="summary-stats-text" id="active-category-text">
+            Potholes Feed Synced
+          </span>
+        </div>
+      </div>
+
+      <!-- Right: Direct File Picker "Load Video" Button -->
+      <div class="header-right">
+        <!-- Hidden Native File Input for Direct OS File Picker -->
+        <input type="file" id="video-file-input" accept="video/mp4,video/webm,video/ogg,video/*" style="display: none;">
+        
+        <button class="btn-secondary" id="load-video-btn" title="Select a video file (MP4/WebM) from your computer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <span>Load Video</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ======================================================================
+         Main Layout: Video Viewport (Left) + Synced Detections Feed (Right)
+         ====================================================================== -->
+    <main class="main-layout">
+
+      <!-- Left Viewport: Video Player & Controls (~62% width) -->
+      <section class="video-viewport-panel" aria-label="Video Telemetry Viewport">
+        
+        <!-- Video Feed Selector Tabs -->
+        <div class="video-feed-header">
+          <div class="feed-selector-tabs" role="tablist">
+            <!-- Potholes -->
+            <button class="feed-tab is-active" data-category="pothole" role="tab" aria-selected="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span>Potholes</span>
+              <span class="feed-badge-count" id="badge-count-pothole">0</span>
+            </button>
+
+            <!-- Heavy Traffic -->
+            <button class="feed-tab" data-category="traffic" role="tab" aria-selected="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 11 2 11.5 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
+              <span>Heavy Traffic</span>
+              <span class="feed-badge-count" id="badge-count-traffic">0</span>
+            </button>
+
+            <!-- Garbage Dumps -->
+            <button class="feed-tab" data-category="garbage" role="tab" aria-selected="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+              <span>Garbage Dumps</span>
+              <span class="feed-badge-count" id="badge-count-garbage">0</span>
+            </button>
+          </div>
+
+          <!-- Video Source / Status indicator -->
+          <div class="video-source-info">
+            <span class="video-status-tag" id="video-source-label">Default Dataset Video</span>
+          </div>
+        </div>
+
+        <!-- Video Player Card Container (Clean Video Stage, No Overlapping Text) -->
+        <div class="video-player-card">
+          
+          <!-- Clean Video Stage Area -->
+          <div class="video-stage">
+            <!-- Native HTML5 Video Element -->
+            <video id="main-video" class="main-video-element" preload="metadata" playsinline muted>
+              <source src="pothole_video.mp4" type="video/mp4">
+              <source src="pothole_vedio.mp4" type="video/mp4">
+              Your browser does not support HTML5 video.
+            </video>
+
+            <!-- Clean Simulation Fallback Canvas (Zero top-corner text overlays) -->
+            <canvas id="simulation-canvas"></canvas>
+          </div>
+
+          <!-- Video Custom Controls & Timeline Bar -->
+          <div class="video-controls-bar">
+            
+            <!-- Timeline Scrubber with Detection Bookmark Dots -->
+            <div class="timeline-scrubber-wrapper">
+              <div class="timeline-track" id="timeline-track" title="Click along timeline to seek video">
+                <div class="timeline-progress-fill" id="timeline-fill"></div>
+                <div class="timeline-seeker-head" id="timeline-seeker"></div>
+                <!-- Dynamic timeline marker dots injected here -->
+                <div id="timeline-markers-container"></div>
+              </div>
+            </div>
+
+            <!-- Controls Action Row -->
+            <div class="controls-action-row">
+              <div class="controls-left-group">
+                <!-- Play / Pause Button -->
+                <button class="ctrl-btn primary-play-btn" id="play-pause-btn" title="Toggle video playback">
+                  <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  <span id="play-pause-text">Play Video</span>
+                </button>
+
+                <!-- Previous Issue Jump Button -->
+                <button class="ctrl-btn" id="prev-issue-btn" title="Jump to previous detection">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+                </button>
+
+                <!-- Next Issue Jump Button -->
+                <button class="ctrl-btn" id="next-issue-btn" title="Jump to next detection">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+                </button>
+
+                <!-- Clean Non-overlapping Time Indicator -->
+                <div class="time-display-badge">
+                  <span class="time-label">Time:</span>
+                  <span class="time-value" id="current-timestamp-text">0:00 / 0:25</span>
+                </div>
+              </div>
+
+              <!-- Right: Playback Speed -->
+              <div class="controls-right-group">
+                <span style="font-size: 12px; color: var(--text-muted); font-weight: 500;">Speed:</span>
+                <select class="playback-speed-select" id="playback-speed" title="Adjust playback speed">
+                  <option value="0.5">0.5x</option>
+                  <option value="1" selected>1.0x (Normal)</option>
+                  <option value="1.25">1.25x</option>
+                  <option value="1.5">1.5x</option>
+                  <option value="2">2.0x</option>
+                </select>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- Instructional Guidance Card -->
+        <div class="feed-instruction-card">
+          <svg class="feed-instruction-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <div class="feed-instruction-content">
+            <strong>Video Telemetry Sync:</strong> As the video plays, the detected issue list on the right automatically scrolls to and highlights the issue at the current video timestamp. You can also click any card in the list to jump the video directly to that time.
+          </div>
+        </div>
+
+      </section>
+
+      <!-- Right Panel: Synced Incident List Feed (~38% width) -->
+      <aside class="sidebar-panel" aria-label="Detected Issues Feed Console">
+        
+        <!-- Stats Breakdown Section -->
+        <section class="stats-summary-card">
+          <div class="stats-header-row">
+            <span class="stats-title">Telemetry Summary</span>
+            <span class="stats-rate-pill" id="metric-active-count">0 Active</span>
+          </div>
+
+          <div class="feed-summary-metrics">
+            <div class="feed-metric-box">
+              <span class="feed-metric-label">Total Detections</span>
+              <span class="feed-metric-val" id="metric-total-count">0</span>
+            </div>
+            <div class="feed-metric-box">
+              <span class="feed-metric-label" id="metric-custom-label">Avg Confidence</span>
+              <span class="feed-metric-val" id="metric-custom-stat">--</span>
+            </div>
+            <div class="feed-metric-box">
+              <span class="feed-metric-label">Feed Status</span>
+              <span class="feed-metric-val" style="color: var(--status-resolved-dot); font-size: 14px;">Synced</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Filter Tabs & Quick Search -->
+        <div class="filter-bar-wrapper">
+          <!-- Filter Tabs -->
+          <div class="segmented-tabs" role="tablist">
+            <button class="tab-btn is-active" data-priority="all" role="tab" aria-selected="true">
+              <span>All Detections</span>
+            </button>
+            <button class="tab-btn" data-priority="high" role="tab" aria-selected="false">
+              <span>High Priority</span>
+            </button>
+          </div>
+
+          <!-- Quick Search Filter -->
+          <div class="search-filter-row">
+            <div class="search-input-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" class="search-input" id="search-input" placeholder="Search by ID, type, timestamp..." autocomplete="off">
+              <button class="clear-search-btn" id="clear-search-btn" title="Clear search">✕</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feed Counter Header -->
+        <div class="feed-header-info">
+          <span class="feed-count-label" id="feed-count-label">Loading detections...</span>
+          <span>Click card to seek</span>
+        </div>
+
+        <!-- Incident Feed Cards (Scrollable & Synced) -->
+        <div class="incident-feed-container" id="incident-feed" role="feed">
+          <!-- Dynamic clean cards injected via feed.js -->
+        </div>
+
+      </aside>
+
+    </main>
+
+  </div>
+
+  <!-- Video Feed Controller Script -->
+  <script src="feed.js"></script>
+</body>
+</html>

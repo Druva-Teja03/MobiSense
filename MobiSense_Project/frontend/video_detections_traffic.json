@@ -1,0 +1,65 @@
+[
+  {
+    "id": "traffic_issue_001",
+    "type": "heavy_traffic",
+    "vehicle_count": 8,
+    "traffic_level": "Moderate Traffic",
+    "confidence": 0.88,
+    "frame_number": 45,
+    "timestamp_in_video": 1.5
+  },
+  {
+    "id": "traffic_issue_002",
+    "type": "heavy_traffic",
+    "vehicle_count": 14,
+    "traffic_level": "Heavy Congestion",
+    "confidence": 0.94,
+    "frame_number": 105,
+    "timestamp_in_video": 3.5
+  },
+  {
+    "id": "traffic_issue_003",
+    "type": "heavy_traffic",
+    "vehicle_count": 22,
+    "traffic_level": "Severe Bottleneck",
+    "confidence": 0.96,
+    "frame_number": 180,
+    "timestamp_in_video": 6.0
+  },
+  {
+    "id": "traffic_issue_004",
+    "type": "heavy_traffic",
+    "vehicle_count": 17,
+    "traffic_level": "Heavy Congestion",
+    "confidence": 0.91,
+    "frame_number": 255,
+    "timestamp_in_video": 8.5
+  },
+  {
+    "id": "traffic_issue_005",
+    "type": "heavy_traffic",
+    "vehicle_count": 11,
+    "traffic_level": "Moderate Traffic",
+    "confidence": 0.85,
+    "frame_number": 360,
+    "timestamp_in_video": 12.0
+  },
+  {
+    "id": "traffic_issue_006",
+    "type": "heavy_traffic",
+    "vehicle_count": 25,
+    "traffic_level": "Gridlock Alert",
+    "confidence": 0.98,
+    "frame_number": 480,
+    "timestamp_in_video": 16.0
+  },
+  {
+    "id": "traffic_issue_007",
+    "type": "heavy_traffic",
+    "vehicle_count": 19,
+    "traffic_level": "Heavy Congestion",
+    "confidence": 0.93,
+    "frame_number": 600,
+    "timestamp_in_video": 20.0
+  }
+]
