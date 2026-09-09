@@ -1,0 +1,35 @@
+[
+  {
+    "id": "traffic_001",
+    "type": "heavy_traffic",
+    "lat": 12.2958,
+    "lng": 76.6394,
+    "vehicle_count": 6,
+    "traffic_level": "moderate",
+    "timestamp": "2026-09-12T10:00:00Z",
+    "status": "unresolved",
+    "source_image": "istockphoto-1206421561-612x612.jpg"
+  },
+  {
+    "id": "traffic_002",
+    "type": "heavy_traffic",
+    "lat": 12.2958,
+    "lng": 76.6394,
+    "vehicle_count": 11,
+    "traffic_level": "moderate",
+    "timestamp": "2026-09-12T10:00:00Z",
+    "status": "unresolved",
+    "source_image": "traffic.jpg"
+  },
+  {
+    "id": "traffic_003",
+    "type": "heavy_traffic",
+    "lat": 12.2958,
+    "lng": 76.6394,
+    "vehicle_count": 39,
+    "traffic_level": "heavy",
+    "timestamp": "2026-09-12T10:00:00Z",
+    "status": "unresolved",
+    "source_image": "traffic_photo.jpg"
+  }
+]

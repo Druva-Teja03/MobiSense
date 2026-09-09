@@ -1,0 +1,46 @@
+[
+  {
+    "id": "garbage_001",
+    "type": "garbage",
+    "lat": 12.2958,
+    "lng": 76.6394,
+    "item_count": 1,
+    "severity": "low",
+    "timestamp": "2026-09-12T10:00:00Z",
+    "status": "unresolved",
+    "source_image": "garbage.jpg"
+  },
+  {
+    "id": "garbage_002",
+    "type": "garbage",
+    "lat": 12.2958,
+    "lng": 76.6394,
+    "item_count": 4,
+    "severity": "moderate",
+    "timestamp": "2026-09-12T10:00:00Z",
+    "status": "unresolved",
+    "source_image": "images (2).jpg"
+  },
+  {
+    "id": "garbage_003",
+    "type": "garbage",
+    "lat": 12.2958,
+    "lng": 76.6394,
+    "item_count": 3,
+    "severity": "moderate",
+    "timestamp": "2026-09-12T10:00:00Z",
+    "status": "unresolved",
+    "source_image": "images (3).jpg"
+  },
+  {
+    "id": "garbage_004",
+    "type": "garbage",
+    "lat": 12.2958,
+    "lng": 76.6394,
+    "item_count": 1,
+    "severity": "low",
+    "timestamp": "2026-09-12T10:00:00Z",
+    "status": "unresolved",
+    "source_image": "images (4).jpg"
+  }
+]

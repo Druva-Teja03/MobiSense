@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MobiSense — Municipal Incident Dashboard | Smart India Hackathon</title>
+  
+  <!-- Typography: Inter font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- GIS Mapping Engine: Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- Clean Civic-Tech Stylesheet -->
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+
+  <div class="app-container">
+
+    <!-- ======================================================================
+         Top Municipal Navigation & Telemetry Bar
+         ====================================================================== -->
+    <header class="header-bar">
+      <!-- Left: Branding & Inter-page Navigation -->
+      <div class="header-left">
+        <img src="logo.jpeg" alt="MobiSense Logo" class="brand-logo">
+        <div class="brand-info">
+          <div class="brand-title-wrap">
+            <h1 class="brand-title">MobiSense</h1>
+          </div>
+          <span class="brand-subtitle">Municipal Incident &amp; Road Safety Monitor</span>
+        </div>
+
+        <!-- Navigation Switcher: Map vs Video Feed -->
+        <nav class="header-nav-links" aria-label="Page Navigation">
+          <a href="dashboard.html" class="nav-link-btn is-active" title="GIS Incident Map View">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span>GIS Map</span>
+          </a>
+          <a href="feed.html" class="nav-link-btn" title="AI Video Detection Feed">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+            <span>Video Feed</span>
+          </a>
+        </nav>
+      </div>
+
+      <!-- Center: Live Incident Summary Indicator -->
+      <div class="header-center">
+        <div class="live-summary-badge" id="header-live-summary">
+          <span class="pulse-indicator">
+            <span class="pulse-ring"></span>
+            <span class="pulse-dot"></span>
+          </span>
+          <span class="summary-stats-text">
+            Connecting to live telemetry...
+          </span>
+        </div>
+      </div>
+
+      <!-- Right: Sync status & Refresh action -->
+      <div class="header-right">
+        <span class="sync-status" id="sync-time-label">Syncing...</span>
+        <button class="btn-secondary" id="refresh-btn" title="Fetch latest incidents from API">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          <span>Refresh</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ======================================================================
+         Main Layout: GIS Viewport (Left) + Incident Console (Right)
+         ====================================================================== -->
+    <main class="main-layout">
+
+      <!-- Left Viewport: Map & Telemetry Layer (~68% width) -->
+      <section class="map-panel" aria-label="Incident Map Area">
+        <div id="map-container"></div>
+
+
+        <!-- Floating Map Overlay: Top-Right Controls -->
+        <div class="map-overlay-top-right">
+          <button class="map-btn" id="fit-bounds-btn" title="Center map to all incident markers">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+            <span>Center All</span>
+          </button>
+        </div>
+
+        <!-- Floating Map Overlay: Bottom-Left Legend -->
+        <div class="map-overlay-bottom-left">
+          <div class="map-legend">
+            <div class="legend-item">
+              <span class="legend-dot unresolved"></span>
+              <span>Unresolved</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot resolved"></span>
+              <span>Resolved</span>
+            </div>
+          </div>
+          <div class="map-info-pill" id="map-center-coords" style="font-family: monospace; font-size: 11px;">
+            12.2958°N, 76.6394°E
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Panel: Incident Management Feed (~32% width) -->
+      <aside class="sidebar-panel" aria-label="Incident Management Console">
+        
+        <!-- Stats Breakdown Section -->
+        <section class="stats-summary-card">
+          <div class="stats-header-row">
+            <span class="stats-title">Category Breakdown</span>
+            <span class="stats-rate-pill" id="resolution-rate-pill">0% Resolved</span>
+          </div>
+
+          <div class="stats-type-grid">
+            <!-- Potholes -->
+            <div class="stats-type-box" data-type="pothole" title="Filter by Potholes">
+              <div class="stats-type-box-top">
+                <span class="stats-type-label">Potholes</span>
+                <svg class="stats-type-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </div>
+              <span class="stats-type-count" id="count-potholes">0</span>
+            </div>
+
+            <!-- Heavy Traffic -->
+            <div class="stats-type-box" data-type="heavy_traffic" title="Filter by Heavy Traffic">
+              <div class="stats-type-box-top">
+                <span class="stats-type-label">Traffic</span>
+                <svg class="stats-type-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 11 2 11.5 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
+              </div>
+              <span class="stats-type-count" id="count-traffic">0</span>
+            </div>
+
+            <!-- Garbage Dump -->
+            <div class="stats-type-box" data-type="garbage" title="Filter by Garbage Dumps">
+              <div class="stats-type-box-top">
+                <span class="stats-type-label">Garbage</span>
+                <svg class="stats-type-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+              </div>
+              <span class="stats-type-count" id="count-garbage">0</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Filter Tabs & Search Bar -->
+        <div class="filter-bar-wrapper">
+          <!-- Segmented Filter Tabs: All / Unresolved / Resolved -->
+          <div class="segmented-tabs" role="tablist">
+            <button class="tab-btn is-active" data-status="all" role="tab" aria-selected="true">
+              <span>All</span>
+              <span class="tab-badge" id="badge-tab-all">0</span>
+            </button>
+            <button class="tab-btn" data-status="unresolved" role="tab" aria-selected="false">
+              <span>Unresolved</span>
+              <span class="tab-badge" id="badge-tab-unresolved">0</span>
+            </button>
+            <button class="tab-btn" data-status="resolved" role="tab" aria-selected="false">
+              <span>Resolved</span>
+              <span class="tab-badge" id="badge-tab-resolved">0</span>
+            </button>
+          </div>
+
+          <!-- Quick Search Filter -->
+          <div class="search-filter-row">
+            <div class="search-input-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" class="search-input" id="search-input" placeholder="Search by ID, type, or coordinates..." autocomplete="off">
+              <button class="clear-search-btn" id="clear-search-btn" title="Clear search">✕</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feed Counter Header -->
+        <div class="feed-header-info">
+          <span class="feed-count-label" id="feed-count-label">Loading incidents...</span>
+          <span>Click card to locate on map</span>
+        </div>
+
+        <!-- Incident Feed Cards (Scrollable) -->
+        <div class="incident-feed-container" id="incident-feed" role="feed">
+          <!-- Dynamic cards injected via dashboard.js -->
+        </div>
+
+      </aside>
+    </main>
+
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+  </div>
+
+  <!-- Leaflet GIS Engine Script -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Dashboard Application Controller -->
+  <script src="dashboard.js"></script>
+</body>
+</html>

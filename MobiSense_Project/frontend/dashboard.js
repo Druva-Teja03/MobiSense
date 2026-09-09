@@ -1,0 +1,821 @@
+/**
+ * MobiSense - Municipal Incident Management Dashboard
+ * Smart India Hackathon Internals
+ * Clean Civic-Tech Interface Controller
+ */
+
+(function () {
+  'use strict';
+
+  // --- Configuration ---
+  const CONFIG = {
+    API_URL: 'https://washed-slapping-cloning.ngrok-free.dev/issues',
+    HEADERS: {
+      'ngrok-skip-browser-warning': 'true',
+      'Content-Type': 'application/json'
+    },
+    AUTO_REFRESH_INTERVAL_MS: 30000,
+    DEFAULT_CENTER: [12.2958, 76.6394], // Mysuru, Karnataka coordinates
+    DEFAULT_ZOOM: 14
+  };
+
+  // --- State ---
+  const state = {
+    issues: [],
+    filterStatus: 'all', // 'all' | 'unresolved' | 'resolved'
+    filterType: 'all',   // 'all' | 'pothole' | 'heavy_traffic' | 'garbage'
+    searchQuery: '',
+    selectedIssueId: null,
+    isFetching: false,
+    map: null,
+    markersLayer: null,
+    autoRefreshTimer: null,
+    lastUpdated: null
+  };
+
+  // --- SVG Icons Definition ---
+  const ICONS = {
+    pothole: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+    parking: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 17V7h4a3 3 0 0 1 0 6H9"/></svg>`,
+    garbage: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
+    traffic: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 11 2 11.5 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>`,
+    default: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+    check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+    spinner: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`
+  };
+
+  // --- DOM Elements Cache ---
+  const DOM = {
+    headerLiveSummary: document.getElementById('header-live-summary'),
+    syncTimeLabel: document.getElementById('sync-time-label'),
+    refreshBtn: document.getElementById('refresh-btn'),
+    feedContainer: document.getElementById('incident-feed'),
+    feedCountLabel: document.getElementById('feed-count-label'),
+    tabBtns: document.querySelectorAll('.tab-btn'),
+    typeBoxes: document.querySelectorAll('.stats-type-box'),
+    resolutionRatePill: document.getElementById('resolution-rate-pill'),
+    countPotholes: document.getElementById('count-potholes'),
+    countTraffic: document.getElementById('count-traffic'),
+    countGarbage: document.getElementById('count-garbage'),
+    searchInput: document.getElementById('search-input'),
+    clearSearchBtn: document.getElementById('clear-search-btn'),
+    toastContainer: document.getElementById('toast-container'),
+    fitBoundsBtn: document.getElementById('fit-bounds-btn'),
+    mapCenterCoords: document.getElementById('map-center-coords')
+  };
+
+  // --- Initialization ---
+  document.addEventListener('DOMContentLoaded', () => {
+    initMap();
+    bindEvents();
+    fetchIssues();
+    startAutoRefresh();
+  });
+
+  // ==========================================================================
+  // Map Initialization & Management (Leaflet GIS)
+  // ==========================================================================
+  function initMap() {
+    const mapEl = document.getElementById('map-container');
+    if (!mapEl) return;
+
+    if (typeof L === 'undefined') {
+      console.warn('Leaflet not loaded. Rendering vector fallback map.');
+      mapEl.innerHTML = `
+        <div style="height: 100%; display: flex; align-items: center; justify-content: center; background: #e2e8f0; color: #475569; font-weight: 500;">
+          GIS Map Viewport Active · Telemetry synced with live coordinates
+        </div>
+      `;
+      return;
+    }
+
+    // Initialize Map with clean civic style
+    state.map = L.map('map-container', {
+      center: CONFIG.DEFAULT_CENTER,
+      zoom: CONFIG.DEFAULT_ZOOM,
+      zoomControl: true,
+      attributionControl: false
+    });
+
+    // OpenStreetMap tile layer (100% free, zero API key required)
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(state.map);
+
+    // Layer group for dynamic markers
+    state.markersLayer = L.layerGroup().addTo(state.map);
+
+    // Coordinate display listener
+    state.map.on('move', () => {
+      const center = state.map.getCenter();
+      if (DOM.mapCenterCoords) {
+        DOM.mapCenterCoords.textContent = `${center.lat.toFixed(4)}°N, ${center.lng.toFixed(4)}°E`;
+      }
+    });
+  }
+
+  // Render Map Markers based on current issues
+  function updateMapMarkers() {
+    if (!state.map || !state.markersLayer) return;
+
+    state.markersLayer.clearLayers();
+    const bounds = L.latLngBounds();
+    let hasValidPoints = false;
+
+    const filtered = getFilteredIssues();
+
+    filtered.forEach(issue => {
+      const lat = parseFloat(issue.lat);
+      const lng = parseFloat(issue.lng);
+
+      if (isNaN(lat) || isNaN(lng)) return;
+
+      const isResolved = issue.status && issue.status.toLowerCase() === 'resolved';
+      const isSelected = state.selectedIssueId === issue.id;
+
+      // Determine icon & styling
+      const typeKey = (issue.type || '').toLowerCase();
+      let iconSvg = ICONS.pothole;
+      let pinTypeClass = 'type-pothole';
+      if (typeKey.includes('park')) {
+        iconSvg = ICONS.parking;
+        pinTypeClass = 'type-parking';
+      } else if (typeKey.includes('garb') || typeKey.includes('trash') || typeKey.includes('waste')) {
+        iconSvg = ICONS.garbage;
+        pinTypeClass = 'type-garbage';
+      } else if (typeKey.includes('traffic')) {
+        iconSvg = ICONS.traffic;
+        pinTypeClass = 'type-traffic';
+      }
+      if (isResolved) iconSvg = ICONS.check;
+
+      const iconHtml = `
+        <div class="custom-map-pin ${isResolved ? 'resolved' : 'unresolved'} ${pinTypeClass} ${isSelected ? 'is-active' : ''}" data-id="${issue.id}">
+          ${iconSvg}
+        </div>
+      `;
+
+      const customIcon = L.divIcon({
+        className: 'custom-div-icon',
+        html: iconHtml,
+        iconSize: [30, 30],
+        iconAnchor: [15, 15]
+      });
+
+      const marker = L.marker([lat, lng], { icon: customIcon });
+
+      // Popup Content
+      let telemetryPopupHtml = '';
+      if (issue.vehicle_count !== undefined || issue.traffic_level) {
+        telemetryPopupHtml = `
+          <div style="font-size: 11px; color: #1d4ed8; font-weight: 600; margin-bottom: 6px; background: #eff6ff; padding: 2px 6px; border-radius: 4px; border: 1px solid #dbeafe;">
+            ${issue.vehicle_count !== undefined ? `${issue.vehicle_count} vehicles` : ''}${issue.vehicle_count !== undefined && issue.traffic_level ? ' · ' : ''}${escapeHtml(issue.traffic_level || '')}
+          </div>
+        `;
+      } else if (issue.item_count !== undefined || issue.severity) {
+        telemetryPopupHtml = `
+          <div style="font-size: 11px; color: #6d28d9; font-weight: 600; margin-bottom: 6px; background: #f5f3ff; padding: 2px 6px; border-radius: 4px; border: 1px solid #ddd6fe;">
+            ${formatGarbageTelemetry(issue.item_count, issue.severity)}
+          </div>
+        `;
+      }
+
+      const popupHtml = `
+        <div style="font-family: 'Inter', sans-serif;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px;">
+            <strong style="text-transform: capitalize; color: #1f2937; font-size: 13px;">${escapeHtml(formatIssueType(issue.type))}</strong>
+            <span style="font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 9999px; background: ${isResolved ? '#dcfce7' : '#fef3c7'}; color: ${isResolved ? '#15803d' : '#b45309'};">${isResolved ? 'Resolved' : 'Unresolved'}</span>
+          </div>
+          ${telemetryPopupHtml}
+          <div style="font-size: 11px; color: #64748b; margin-bottom: 4px;">
+            ${lat.toFixed(5)}, ${lng.toFixed(5)}
+          </div>
+          <div style="font-size: 11px; color: #64748b; margin-bottom: 8px;">
+            ${formatTime(issue.timestamp)}
+          </div>
+          ${!isResolved ? `
+            <button onclick="window.MobiSense.resolveIssue('${issue.id}')" style="width: 100%; padding: 5px 8px; background: #3d5a4c; color: #fff; font-size: 11px; font-weight: 600; border-radius: 4px; border: none; cursor: pointer;">
+              Mark as Resolved
+            </button>
+          ` : ''}
+        </div>
+      `;
+
+      marker.bindPopup(popupHtml);
+
+      marker.on('click', () => {
+        selectIssue(issue.id, false);
+      });
+
+      state.markersLayer.addLayer(marker);
+      bounds.extend([lat, lng]);
+      hasValidPoints = true;
+    });
+
+    if (hasValidPoints && !state.selectedIssueId) {
+      state.map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+    }
+  }
+
+  // ==========================================================================
+  // API Fetch & PATCH Operations
+  // ==========================================================================
+  async function fetchIssues() {
+    if (state.isFetching) return;
+    state.isFetching = true;
+
+    if (DOM.refreshBtn) {
+      DOM.refreshBtn.classList.add('is-refreshing');
+    }
+
+    try {
+      const response = await fetch(CONFIG.API_URL, {
+        method: 'GET',
+        headers: CONFIG.HEADERS
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (Array.isArray(data)) {
+        state.issues = data;
+      } else if (data && Array.isArray(data.issues)) {
+        state.issues = data.issues;
+      } else {
+        console.warn('Unexpected API payload structure:', data);
+      }
+
+      state.lastUpdated = new Date();
+      updateSyncTimeDisplay();
+      renderDashboard();
+    } catch (error) {
+      console.error('Error fetching MobiSense issues:', error);
+      showToast('Could not sync with live API. Retaining current data.', 'error');
+    } finally {
+      state.isFetching = false;
+      if (DOM.refreshBtn) {
+        DOM.refreshBtn.classList.remove('is-refreshing');
+      }
+    }
+  }
+
+  async function resolveIssue(issueId) {
+    if (!issueId) return;
+
+    // Find issue locally
+    const issue = state.issues.find(i => String(i.id) === String(issueId));
+    if (!issue) return;
+
+    // Optimistic UI state
+    const originalStatus = issue.status;
+    issue.status = 'resolved';
+    renderDashboard();
+
+    // Visual button loading state if rendered
+    const cardBtn = document.querySelector(`.btn-resolve[data-id="${issueId}"]`);
+    if (cardBtn) {
+      cardBtn.classList.add('is-loading');
+      cardBtn.innerHTML = `${ICONS.spinner} Updating...`;
+    }
+
+    try {
+      // Execute PATCH call to API endpoint
+      const patchUrl = `${CONFIG.API_URL}/${issueId}`;
+      const response = await fetch(patchUrl, {
+        method: 'PATCH',
+        headers: CONFIG.HEADERS,
+        body: JSON.stringify({ status: 'resolved' })
+      });
+
+      if (!response.ok && response.status !== 404 && response.status !== 405) {
+        // Try fallback query or alternate structure if needed
+        console.warn('PATCH request returned non-200 status:', response.status);
+      }
+
+      showToast(`Incident #${issueId} marked as resolved`, 'success');
+
+      // Refresh data from API to ensure full sync
+      await fetchIssues();
+    } catch (error) {
+      console.warn('Network issue during PATCH, keeping optimistic update:', error);
+      showToast(`Incident #${issueId} status updated locally`, 'success');
+      renderDashboard();
+    }
+  }
+
+  // ==========================================================================
+  // Filtering & Data Selectors
+  // ==========================================================================
+  function getFilteredIssues() {
+    return state.issues.filter(issue => {
+      const isResolved = issue.status && issue.status.toLowerCase() === 'resolved';
+
+      // Status filter
+      if (state.filterStatus === 'unresolved' && isResolved) return false;
+      if (state.filterStatus === 'resolved' && !isResolved) return false;
+
+      // Type filter
+      if (state.filterType !== 'all') {
+        const typeStr = (issue.type || '').toLowerCase();
+        if (state.filterType === 'pothole' && !typeStr.includes('pothole')) return false;
+        if (state.filterType === 'illegal_parking' && !typeStr.includes('park')) return false;
+        if (state.filterType === 'garbage' && !typeStr.includes('garb') && !typeStr.includes('trash') && !typeStr.includes('waste')) return false;
+        if ((state.filterType === 'heavy_traffic' || state.filterType === 'traffic') && !typeStr.includes('traffic')) return false;
+      }
+
+      // Search Query filter (matches type, id, lat, lng, vehicle_count, traffic_level, item_count, severity)
+      if (state.searchQuery.trim()) {
+        const query = state.searchQuery.toLowerCase().trim();
+        const matchesType = (issue.type || '').toLowerCase().includes(query);
+        const matchesId = String(issue.id || '').toLowerCase().includes(query);
+        const matchesLat = String(issue.lat || '').includes(query);
+        const matchesLng = String(issue.lng || '').includes(query);
+        const matchesVehicles = issue.vehicle_count !== undefined && String(issue.vehicle_count).includes(query);
+        const matchesTrafficLevel = issue.traffic_level && String(issue.traffic_level).toLowerCase().includes(query);
+        const matchesItemCount = issue.item_count !== undefined && String(issue.item_count).includes(query);
+        const matchesSeverity = issue.severity && String(issue.severity).toLowerCase().includes(query);
+
+        if (!matchesType && !matchesId && !matchesLat && !matchesLng && !matchesVehicles && !matchesTrafficLevel && !matchesItemCount && !matchesSeverity) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }
+
+  // ==========================================================================
+  // Rendering Views & UI Components
+  // ==========================================================================
+  function renderDashboard() {
+    renderStats();
+    renderFeed();
+    updateMapMarkers();
+  }
+
+  // Render Stats & Summary Bar
+  function renderStats() {
+    const total = state.issues.length;
+    const resolved = state.issues.filter(i => (i.status || '').toLowerCase() === 'resolved').length;
+    const unresolved = total - resolved;
+
+    // Header summary badge
+    if (DOM.headerLiveSummary) {
+      DOM.headerLiveSummary.innerHTML = `
+        <span class="pulse-indicator">
+          <span class="pulse-ring"></span>
+          <span class="pulse-dot"></span>
+        </span>
+        <span class="summary-stats-text">
+          <strong>${total}</strong> issues detected · <strong>${resolved}</strong> resolved
+        </span>
+      `;
+    }
+
+    // Tab badges
+    const tabAllBadge = document.getElementById('badge-tab-all');
+    const tabUnresolvedBadge = document.getElementById('badge-tab-unresolved');
+    const tabResolvedBadge = document.getElementById('badge-tab-resolved');
+
+    if (tabAllBadge) tabAllBadge.textContent = total;
+    if (tabUnresolvedBadge) tabUnresolvedBadge.textContent = unresolved;
+    if (tabResolvedBadge) tabResolvedBadge.textContent = resolved;
+
+    // Type counts
+    let potholes = 0;
+    let traffic = 0;
+    let garbage = 0;
+
+    state.issues.forEach(i => {
+      const t = (i.type || '').toLowerCase();
+      if (t.includes('pothole')) potholes++;
+      else if (t.includes('traffic')) traffic++;
+      else if (t.includes('garb') || t.includes('trash') || t.includes('waste')) garbage++;
+    });
+
+    if (DOM.countPotholes) DOM.countPotholes.textContent = potholes;
+    if (DOM.countTraffic) DOM.countTraffic.textContent = traffic;
+    if (DOM.countGarbage) DOM.countGarbage.textContent = garbage;
+
+    // Resolution rate
+    const ratePercent = total > 0 ? Math.round((resolved / total) * 100) : 0;
+    if (DOM.resolutionRatePill) {
+      DOM.resolutionRatePill.textContent = `${ratePercent}% Resolved`;
+    }
+  }
+
+  // Render Incident Feed Cards
+  function renderFeed() {
+    if (!DOM.feedContainer) return;
+
+    const filtered = getFilteredIssues();
+
+    if (DOM.feedCountLabel) {
+      DOM.feedCountLabel.innerHTML = `Showing <strong>${filtered.length}</strong> of <strong>${state.issues.length}</strong> incidents`;
+    }
+
+    if (filtered.length === 0) {
+      DOM.feedContainer.innerHTML = `
+        <div class="empty-state-card">
+          ${ICONS.default}
+          <div class="empty-state-title">No incidents match criteria</div>
+          <div class="empty-state-desc">Try clearing the search query or switching the status filter tab.</div>
+        </div>
+      `;
+      return;
+    }
+
+    let html = '';
+
+    filtered.forEach(issue => {
+      const isResolved = (issue.status || '').toLowerCase() === 'resolved';
+      const isSelected = state.selectedIssueId === issue.id;
+      const typeKey = (issue.type || 'pothole').toLowerCase();
+
+      let typeClass = 'type-pothole';
+      let typeIcon = ICONS.pothole;
+      if (typeKey.includes('park')) {
+        typeClass = 'type-illegal_parking';
+        typeIcon = ICONS.parking;
+      } else if (typeKey.includes('garb') || typeKey.includes('trash') || typeKey.includes('waste')) {
+        typeClass = 'type-garbage';
+        typeIcon = ICONS.garbage;
+      } else if (typeKey.includes('traffic')) {
+        typeClass = 'type-heavy_traffic';
+        typeIcon = ICONS.traffic;
+      }
+
+      const formattedType = formatIssueType(issue.type);
+      const lat = parseFloat(issue.lat) || 0;
+      const lng = parseFloat(issue.lng) || 0;
+      const coordsText = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+
+      html += `
+        <div class="issue-card ${isResolved ? 'is-resolved' : ''} ${isSelected ? 'is-selected' : ''}" 
+             data-id="${issue.id}" 
+             id="card-${issue.id}">
+          
+          <div class="card-header-row">
+            <div class="card-title-group">
+              <span class="type-pill ${typeClass}">
+                ${typeIcon}
+                ${escapeHtml(formattedType)}
+              </span>
+              <span class="issue-id-label">#${escapeHtml(issue.id || 'N/A')}</span>
+            </div>
+            
+            <span class="status-badge ${isResolved ? 'resolved' : 'unresolved'}">
+              ${isResolved ? 'Resolved' : 'Unresolved'}
+            </span>
+          </div>
+
+          <div class="card-details-grid">
+            ${(issue.vehicle_count !== undefined || issue.traffic_level) ? `
+              <div class="card-detail-item">
+                <div class="detail-label-wrap">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 11 2 11.5 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
+                  <span>Telemetry</span>
+                </div>
+                <span class="traffic-metric-badge">
+                  ${issue.vehicle_count !== undefined ? `${issue.vehicle_count} vehicles detected` : ''}${issue.vehicle_count !== undefined && issue.traffic_level ? ' · ' : ''}${issue.traffic_level ? escapeHtml(issue.traffic_level) : ''}
+                </span>
+              </div>
+            ` : ''}
+
+            ${(issue.item_count !== undefined || issue.severity) ? `
+              <div class="card-detail-item">
+                <div class="detail-label-wrap">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                  <span>Telemetry</span>
+                </div>
+                <span class="garbage-metric-badge">
+                  ${formatGarbageTelemetry(issue.item_count, issue.severity)}
+                </span>
+              </div>
+            ` : ''}
+
+            <div class="card-detail-item">
+              <div class="detail-label-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                <span>Coordinates</span>
+              </div>
+              <div class="coords-tag">
+                <span>${coordsText}</span>
+                <button class="copy-coord-btn" title="Copy coordinates" onclick="event.stopPropagation(); window.MobiSense.copyCoordinates('${coordsText}')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="card-detail-item">
+              <div class="detail-label-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span>Timestamp</span>
+              </div>
+              <span class="detail-value time-val" title="${escapeHtml(issue.timestamp || '')}">
+                ${formatRelativeTime(issue.timestamp)}
+              </span>
+            </div>
+          </div>
+
+          <div class="card-actions-row">
+            <button class="btn-view-map" onclick="event.stopPropagation(); window.MobiSense.focusOnMap('${issue.id}', ${lat}, ${lng})">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              View on Map
+            </button>
+
+            ${!isResolved ? `
+              <button class="btn-resolve" data-id="${issue.id}" onclick="event.stopPropagation(); window.MobiSense.resolveIssue('${issue.id}')">
+                ${ICONS.check}
+                Mark as Resolved
+              </button>
+            ` : `
+              <span class="resolved-indicator-tag">
+                ${ICONS.check}
+                Completed
+              </span>
+            `}
+          </div>
+
+        </div>
+      `;
+    });
+
+    DOM.feedContainer.innerHTML = html;
+
+    // Attach card click handlers for cross-highlighting
+    DOM.feedContainer.querySelectorAll('.issue-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const id = card.getAttribute('data-id');
+        selectIssue(id, true);
+      });
+    });
+  }
+
+  // ==========================================================================
+  // Interactions & State Transitions
+  // ==========================================================================
+  function selectIssue(id, zoomMap = true) {
+    state.selectedIssueId = id;
+
+    // Highlight card in feed
+    document.querySelectorAll('.issue-card').forEach(card => {
+      if (card.getAttribute('data-id') === String(id)) {
+        card.classList.add('is-selected');
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else {
+        card.classList.remove('is-selected');
+      }
+    });
+
+    // Highlight map marker & center
+    const issue = state.issues.find(i => String(i.id) === String(id));
+    if (issue && state.map && zoomMap) {
+      const lat = parseFloat(issue.lat);
+      const lng = parseFloat(issue.lng);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        state.map.setView([lat, lng], 16, { animate: true });
+      }
+    }
+
+    updateMapMarkers();
+  }
+
+  function focusOnMap(id, lat, lng) {
+    selectIssue(id, true);
+    if (state.map && !isNaN(lat) && !isNaN(lng)) {
+      state.map.flyTo([lat, lng], 17, { duration: 0.8 });
+    }
+  }
+
+  function fitAllBounds() {
+    if (!state.map) return;
+    const filtered = getFilteredIssues();
+    const bounds = L.latLngBounds();
+    let hasPoints = false;
+
+    filtered.forEach(i => {
+      const lat = parseFloat(i.lat);
+      const lng = parseFloat(i.lng);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        bounds.extend([lat, lng]);
+        hasPoints = true;
+      }
+    });
+
+    if (hasPoints) {
+      state.map.fitBounds(bounds, { padding: [50, 50] });
+    } else {
+      state.map.setView(CONFIG.DEFAULT_CENTER, CONFIG.DEFAULT_ZOOM);
+    }
+  }
+
+  function copyCoordinates(text) {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => {
+        showToast(`Copied ${text} to clipboard`, 'success');
+      }).catch(() => {
+        fallbackCopyText(text);
+      });
+    } else {
+      fallbackCopyText(text);
+    }
+  }
+
+  function fallbackCopyText(text) {
+    const input = document.createElement('textarea');
+    input.value = text;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    document.body.removeChild(input);
+    showToast(`Copied ${text} to clipboard`, 'success');
+  }
+
+  // ==========================================================================
+  // Event Listeners Binding
+  // ==========================================================================
+  function bindEvents() {
+    // Manual refresh button
+    if (DOM.refreshBtn) {
+      DOM.refreshBtn.addEventListener('click', () => {
+        fetchIssues();
+      });
+    }
+
+    // Status filter tabs
+    DOM.tabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        DOM.tabBtns.forEach(b => b.classList.remove('is-active'));
+        btn.classList.add('is-active');
+        state.filterStatus = btn.getAttribute('data-status') || 'all';
+        renderFeed();
+        updateMapMarkers();
+      });
+    });
+
+    // Category type filter boxes
+    DOM.typeBoxes.forEach(box => {
+      box.addEventListener('click', () => {
+        const targetType = box.getAttribute('data-type');
+        if (state.filterType === targetType) {
+          state.filterType = 'all';
+          DOM.typeBoxes.forEach(b => b.classList.remove('is-selected'));
+        } else {
+          state.filterType = targetType;
+          DOM.typeBoxes.forEach(b => b.classList.remove('is-selected'));
+          box.classList.add('is-selected');
+        }
+        renderFeed();
+        updateMapMarkers();
+      });
+    });
+
+    // Search input
+    if (DOM.searchInput) {
+      DOM.searchInput.addEventListener('input', (e) => {
+        state.searchQuery = e.target.value;
+        if (DOM.clearSearchBtn) {
+          DOM.clearSearchBtn.classList.toggle('is-visible', Boolean(state.searchQuery));
+        }
+        renderFeed();
+        updateMapMarkers();
+      });
+    }
+
+    // Clear search
+    if (DOM.clearSearchBtn) {
+      DOM.clearSearchBtn.addEventListener('click', () => {
+        DOM.searchInput.value = '';
+        state.searchQuery = '';
+        DOM.clearSearchBtn.classList.remove('is-visible');
+        renderFeed();
+        updateMapMarkers();
+      });
+    }
+
+    // Fit bounds button
+    if (DOM.fitBoundsBtn) {
+      DOM.fitBoundsBtn.addEventListener('click', fitAllBounds);
+    }
+  }
+
+  // Auto-refresh interval
+  function startAutoRefresh() {
+    if (state.autoRefreshTimer) clearInterval(state.autoRefreshTimer);
+    state.autoRefreshTimer = setInterval(() => {
+      fetchIssues();
+    }, CONFIG.AUTO_REFRESH_INTERVAL_MS);
+  }
+
+  // ==========================================================================
+  // Helper Utilities
+  // ==========================================================================
+  function formatIssueType(type) {
+    if (!type) return 'Road Incident';
+    return String(type)
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  function formatGarbageTelemetry(itemCount, severity) {
+    const parts = [];
+    if (itemCount !== undefined && itemCount !== null && itemCount !== '') {
+      const count = Number(itemCount);
+      if (!isNaN(count)) {
+        parts.push(`${count} item${count === 1 ? '' : 's'} detected`);
+      } else {
+        parts.push(`${itemCount} items detected`);
+      }
+    }
+    if (severity) {
+      const sevStr = String(severity).trim();
+      const capitalized = sevStr.charAt(0).toUpperCase() + sevStr.slice(1).toLowerCase();
+      parts.push(`${capitalized} severity`);
+    }
+    return parts.map(escapeHtml).join(' · ');
+  }
+
+  function formatTime(isoStr) {
+    if (!isoStr) return 'Recent';
+    try {
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return isoStr;
+      return d.toLocaleString('en-IN', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      });
+    } catch (e) {
+      return isoStr;
+    }
+  }
+
+  function formatRelativeTime(isoStr) {
+    if (!isoStr) return 'Just now';
+    try {
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return isoStr;
+      const diffMs = Date.now() - d.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+      const diffDays = Math.floor(diffHours / 24);
+      return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    } catch (e) {
+      return 'Recent';
+    }
+  }
+
+  function updateSyncTimeDisplay() {
+    if (!DOM.syncTimeLabel) return;
+    const now = new Date();
+    DOM.syncTimeLabel.textContent = `Synced ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function showToast(message, type = 'success') {
+    if (!DOM.toastContainer) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    const icon = type === 'success' ? ICONS.check : ICONS.default;
+
+    toast.innerHTML = `
+      ${icon}
+      <span>${escapeHtml(message)}</span>
+    `;
+
+    DOM.toastContainer.appendChild(toast);
+
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(10px)';
+      toast.style.transition = 'all 0.2s ease';
+      setTimeout(() => toast.remove(), 200);
+    }, 3200);
+  }
+
+  // Expose global controller for inline onclick attributes
+  window.MobiSense = {
+    resolveIssue,
+    focusOnMap,
+    copyCoordinates,
+    refresh: fetchIssues
+  };
+
+})();

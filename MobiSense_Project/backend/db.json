@@ -1,0 +1,162 @@
+{
+  "issues": [
+    {
+      "id": "issue_001",
+      "type": "pothole",
+      "lat": 12.295099,
+      "lng": 76.642134,
+      "timestamp": "2026-09-12T09:00:00Z",
+      "status": "resolved"
+    },
+    {
+      "id": "issue_002",
+      "type": "pothole",
+      "lat": 12.287617,
+      "lng": 76.644718,
+      "timestamp": "2026-09-12T09:05:00Z",
+      "status": "resolved"
+    },
+    {
+      "id": "issue_003",
+      "type": "pothole",
+      "lat": 12.303894,
+      "lng": 76.634465,
+      "timestamp": "2026-09-12T09:10:00Z",
+      "status": "unresolved"
+    },
+    {
+      "id": "issue_004",
+      "type": "pothole",
+      "lat": 12.286048,
+      "lng": 76.629942,
+      "timestamp": "2026-09-12T09:15:00Z",
+      "status": "resolved"
+    },
+    {
+      "id": "issue_005",
+      "type": "pothole",
+      "lat": 12.302926,
+      "lng": 76.644655,
+      "timestamp": "2026-09-12T09:20:00Z",
+      "status": "unresolved"
+    },
+    {
+      "id": "issue_006",
+      "type": "pothole",
+      "lat": 12.286794,
+      "lng": 76.63969,
+      "timestamp": "2026-09-12T09:25:00Z",
+      "status": "resolved"
+    },
+    {
+      "id": "issue_007",
+      "type": "pothole",
+      "lat": 12.301272,
+      "lng": 76.630479,
+      "timestamp": "2026-09-12T09:30:00Z",
+      "status": "unresolved"
+    },
+    {
+      "id": "issue_008",
+      "type": "pothole",
+      "lat": 12.302128,
+      "lng": 76.647587,
+      "timestamp": "2026-09-12T09:35:00Z",
+      "status": "unresolved"
+    },
+    {
+      "id": "issue_009",
+      "type": "pothole",
+      "lat": 12.295248,
+      "lng": 76.636407,
+      "timestamp": "2026-09-12T09:40:00Z",
+      "status": "unresolved"
+    },
+    {
+      "id": "issue_010",
+      "type": "pothole",
+      "lat": 12.302035,
+      "lng": 76.633225,
+      "timestamp": "2026-09-12T09:45:00Z",
+      "status": "unresolved"
+    },
+    {
+      "id": "traffic_001",
+      "type": "heavy_traffic",
+      "lat": 12.2958,
+      "lng": 76.6394,
+      "vehicle_count": 6,
+      "traffic_level": "moderate",
+      "timestamp": "2026-09-12T10:00:00Z",
+      "status": "unresolved",
+      "source_image": "istockphoto-1206421561-612x612.jpg"
+    },
+    {
+      "id": "traffic_002",
+      "type": "heavy_traffic",
+      "lat": 12.2958,
+      "lng": 76.6394,
+      "vehicle_count": 11,
+      "traffic_level": "moderate",
+      "timestamp": "2026-09-12T10:00:00Z",
+      "status": "unresolved",
+      "source_image": "traffic.jpg"
+    },
+    {
+      "id": "traffic_003",
+      "type": "heavy_traffic",
+      "lat": 12.2958,
+      "lng": 76.6394,
+      "vehicle_count": 39,
+      "traffic_level": "heavy",
+      "timestamp": "2026-09-12T10:00:00Z",
+      "status": "unresolved",
+      "source_image": "traffic_photo.jpg"
+    },
+    {
+      "id": "garbage_001",
+      "type": "garbage",
+      "lat": 12.2958,
+      "lng": 76.6394,
+      "item_count": 1,
+      "severity": "low",
+      "timestamp": "2026-09-12T10:00:00Z",
+      "status": "unresolved",
+      "source_image": "garbage.jpg"
+    },
+    {
+      "id": "garbage_002",
+      "type": "garbage",
+      "lat": 12.2958,
+      "lng": 76.6394,
+      "item_count": 4,
+      "severity": "moderate",
+      "timestamp": "2026-09-12T10:00:00Z",
+      "status": "unresolved",
+      "source_image": "images (2).jpg"
+    },
+    {
+      "id": "garbage_003",
+      "type": "garbage",
+      "lat": 12.2958,
+      "lng": 76.6394,
+      "item_count": 3,
+      "severity": "moderate",
+      "timestamp": "2026-09-12T10:00:00Z",
+      "status": "unresolved",
+      "source_image": "images (3).jpg"
+    },
+    {
+      "id": "garbage_004",
+      "type": "garbage",
+      "lat": 12.2958,
+      "lng": 76.6394,
+      "item_count": 1,
+      "severity": "low",
+      "timestamp": "2026-09-12T10:00:00Z",
+      "status": "unresolved",
+      "source_image": "images (4).jpg"
+    }
+  ],
+  "$schema": "./node_modules/json-server/schema.json"
+}

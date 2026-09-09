@@ -1,0 +1,106 @@
+[
+  {
+    "id": "video_traffic_001",
+    "type": "heavy_traffic",
+    "vehicle_count": 12,
+    "traffic_level": "moderate",
+    "frame_number": 0,
+    "timestamp_in_video": 0.0
+  },
+  {
+    "id": "video_traffic_002",
+    "type": "heavy_traffic",
+    "vehicle_count": 12,
+    "traffic_level": "moderate",
+    "frame_number": 30,
+    "timestamp_in_video": 1.0
+  },
+  {
+    "id": "video_traffic_003",
+    "type": "heavy_traffic",
+    "vehicle_count": 16,
+    "traffic_level": "heavy",
+    "frame_number": 60,
+    "timestamp_in_video": 2.0
+  },
+  {
+    "id": "video_traffic_004",
+    "type": "heavy_traffic",
+    "vehicle_count": 15,
+    "traffic_level": "moderate",
+    "frame_number": 90,
+    "timestamp_in_video": 3.0
+  },
+  {
+    "id": "video_traffic_005",
+    "type": "heavy_traffic",
+    "vehicle_count": 17,
+    "traffic_level": "heavy",
+    "frame_number": 120,
+    "timestamp_in_video": 4.0
+  },
+  {
+    "id": "video_traffic_006",
+    "type": "heavy_traffic",
+    "vehicle_count": 12,
+    "traffic_level": "moderate",
+    "frame_number": 150,
+    "timestamp_in_video": 5.0
+  },
+  {
+    "id": "video_traffic_007",
+    "type": "heavy_traffic",
+    "vehicle_count": 14,
+    "traffic_level": "moderate",
+    "frame_number": 180,
+    "timestamp_in_video": 6.0
+  },
+  {
+    "id": "video_traffic_008",
+    "type": "heavy_traffic",
+    "vehicle_count": 11,
+    "traffic_level": "moderate",
+    "frame_number": 210,
+    "timestamp_in_video": 7.0
+  },
+  {
+    "id": "video_traffic_009",
+    "type": "heavy_traffic",
+    "vehicle_count": 13,
+    "traffic_level": "moderate",
+    "frame_number": 240,
+    "timestamp_in_video": 8.0
+  },
+  {
+    "id": "video_traffic_010",
+    "type": "heavy_traffic",
+    "vehicle_count": 13,
+    "traffic_level": "moderate",
+    "frame_number": 270,
+    "timestamp_in_video": 9.0
+  },
+  {
+    "id": "video_traffic_011",
+    "type": "heavy_traffic",
+    "vehicle_count": 14,
+    "traffic_level": "moderate",
+    "frame_number": 300,
+    "timestamp_in_video": 10.0
+  },
+  {
+    "id": "video_traffic_012",
+    "type": "heavy_traffic",
+    "vehicle_count": 17,
+    "traffic_level": "heavy",
+    "frame_number": 330,
+    "timestamp_in_video": 11.0
+  },
+  {
+    "id": "video_traffic_013",
+    "type": "heavy_traffic",
+    "vehicle_count": 13,
+    "traffic_level": "moderate",
+    "frame_number": 360,
+    "timestamp_in_video": 12.0
+  }
+]
