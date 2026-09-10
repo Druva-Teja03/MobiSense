@@ -7,12 +7,29 @@
 (function () {
   'use strict';
 
+  // --- Auth guard: no token, no dashboard. ------------------------
+  const AUTH_TOKEN = localStorage.getItem('mobisense_token');
+  if (!AUTH_TOKEN) {
+    window.location.href = 'login.html';
+    return;
+  }
+  const CURRENT_USER = JSON.parse(localStorage.getItem('mobisense_user') || '{}');
+
+  function logout() {
+    localStorage.removeItem('mobisense_token');
+    localStorage.removeItem('mobisense_user');
+    window.location.href = 'login.html';
+  }
+  window.MobiSense = window.MobiSense || {};
+  window.MobiSense.logout = logout;
+
   // --- Configuration ---
   const CONFIG = {
-    API_URL: 'https://washed-slapping-cloning.ngrok-free.dev/issues',
+    // Point this at your local FastAPI backend (see backend/main.py).
+    API_URL: 'http://localhost:8000/issues',
     HEADERS: {
-      'ngrok-skip-browser-warning': 'true',
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${AUTH_TOKEN}`
     },
     AUTO_REFRESH_INTERVAL_MS: 30000,
     DEFAULT_CENTER: [12.2958, 76.6394], // Mysuru, Karnataka coordinates
@@ -61,11 +78,21 @@
     clearSearchBtn: document.getElementById('clear-search-btn'),
     toastContainer: document.getElementById('toast-container'),
     fitBoundsBtn: document.getElementById('fit-bounds-btn'),
-    mapCenterCoords: document.getElementById('map-center-coords')
+    mapCenterCoords: document.getElementById('map-center-coords'),
+    logoutBtn: document.getElementById('logout-btn'),
+    currentUserLabel: document.getElementById('current-user-label')
   };
 
   // --- Initialization ---
   document.addEventListener('DOMContentLoaded', () => {
+    if (DOM.currentUserLabel) {
+      DOM.currentUserLabel.textContent = CURRENT_USER.full_name
+        ? `${CURRENT_USER.full_name} (${CURRENT_USER.role})`
+        : '';
+    }
+    if (DOM.logoutBtn) {
+      DOM.logoutBtn.addEventListener('click', logout);
+    }
     initMap();
     bindEvents();
     fetchIssues();
@@ -235,6 +262,10 @@
         headers: CONFIG.HEADERS
       });
 
+      if (response.status === 401) {
+        logout(); // session expired or invalid — send back to login
+        return;
+      }
       if (!response.ok) {
         throw new Error(`HTTP error ${response.status}`);
       }

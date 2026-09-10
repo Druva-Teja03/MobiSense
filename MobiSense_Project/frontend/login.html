@@ -582,6 +582,11 @@
             <h2 class="view-title">Welcome back</h2>
             <p class="view-sub">Log in to pick up where you left off.</p>
 
+            <div
+              id="auth-banner"
+              style="display:none; margin-bottom:14px; padding:10px 12px; border-radius:8px; font-size:13px; line-height:1.4;"
+            ></div>
+
             <form id="form-login" novalidate>
               <div class="field">
                 <label for="login-email">Email</label>
@@ -892,6 +897,35 @@
 
     <script>
       (function () {
+        // ---------------------------------------------------------
+        // Backend wiring
+        // Change this to your deployed API URL when you're not
+        // running the backend locally.
+        // ---------------------------------------------------------
+        const API_BASE = "http://localhost:8000";
+
+        const banner = document.getElementById("auth-banner");
+        function showBanner(message, kind) {
+          banner.textContent = message;
+          banner.style.display = "block";
+          if (kind === "error") {
+            banner.style.background = "#fde8e8";
+            banner.style.color = "#9b2c2c";
+          } else {
+            banner.style.background = "#e6f4ea";
+            banner.style.color = "#1e5a2f";
+          }
+        }
+        function hideBanner() {
+          banner.style.display = "none";
+        }
+
+        // If a token already exists (still logged in), skip straight
+        // to the dashboard instead of showing the login form again.
+        if (localStorage.getItem("mobisense_token")) {
+          window.location.href = "dashboard.html";
+        }
+
         const tabLogin = document.getElementById("tab-login");
         const tabSignup = document.getElementById("tab-signup");
         const tabsEl = document.getElementById("tabs");
@@ -1046,21 +1080,96 @@
         );
         termsBox.addEventListener("change", validateSignup);
 
-        // Form submissions (demo — no backend)
+        // ---------------------------------------------------------
+        // Form submissions — wired to the FastAPI backend
+        // ---------------------------------------------------------
+        function setButtonBusy(btn, busy, busyLabel) {
+          if (busy) {
+            btn.dataset.originalLabel = btn.textContent;
+            btn.textContent = busyLabel;
+            btn.disabled = true;
+          } else {
+            btn.textContent = btn.dataset.originalLabel || btn.textContent;
+            btn.disabled = false;
+          }
+        }
+
         document
           .getElementById("form-login")
-          .addEventListener("submit", (e) => {
+          .addEventListener("submit", async (e) => {
             e.preventDefault();
-            alert("Demo only — this form has no backend connected.");
+            hideBanner();
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const email = document.getElementById("login-email").value.trim();
+            const password = document.getElementById("login-password").value;
+
+            setButtonBusy(submitBtn, true, "Signing in...");
+            try {
+              const res = await fetch(`${API_BASE}/auth/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password }),
+              });
+              const data = await res.json();
+              if (!res.ok) {
+                showBanner(data.detail || "Login failed.", "error");
+                return;
+              }
+              localStorage.setItem("mobisense_token", data.token);
+              localStorage.setItem("mobisense_user", JSON.stringify({
+                user_id: data.user_id,
+                full_name: data.full_name,
+                role: data.role,
+              }));
+              showBanner("Signed in — redirecting...", "success");
+              window.location.href = "dashboard.html";
+            } catch (err) {
+              showBanner("Couldn't reach the server. Is the backend running?", "error");
+            } finally {
+              setButtonBusy(submitBtn, false);
+            }
           });
 
         document
           .getElementById("form-signup")
-          .addEventListener("submit", (e) => {
+          .addEventListener("submit", async (e) => {
             e.preventDefault();
-            alert(
-              "Demo only — account creation is not connected to a backend.",
-            );
+            hideBanner();
+
+            const payload = {
+              full_name: nameInput.value.trim(),
+              email: emailInput.value.trim(),
+              job_title: jobInput.value.trim(),
+              govt_id_number: govidInput.value.trim(),
+              password: signupPass.value,
+            };
+
+            setButtonBusy(submitBtn, true, "Creating account...");
+            try {
+              const res = await fetch(`${API_BASE}/auth/signup`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              });
+              const data = await res.json();
+              if (!res.ok) {
+                // Most common case: govt ID not recognized — see auth.py
+                showBanner(data.detail || "Could not create account.", "error");
+                return;
+              }
+              localStorage.setItem("mobisense_token", data.token);
+              localStorage.setItem("mobisense_user", JSON.stringify({
+                user_id: data.user_id,
+                full_name: data.full_name,
+                role: data.role,
+              }));
+              showBanner("Account created — redirecting...", "success");
+              window.location.href = "dashboard.html";
+            } catch (err) {
+              showBanner("Couldn't reach the server. Is the backend running?", "error");
+            } finally {
+              setButtonBusy(submitBtn, false);
+            }
           });
 
         document
