@@ -11,12 +11,13 @@ Endpoints:
 """
 from datetime import datetime
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from auth import get_current_user, login_user, signup_user
 from database import get_cursor
 from models import DetectionIngestRequest, LoginRequest, SignupRequest, StatusUpdateRequest
+from notify import notify_departments_for_issue
 
 app = FastAPI(title="MobiSense API")
 
@@ -77,7 +78,7 @@ def update_issue_status(issue_code: str, body: StatusUpdateRequest, user: dict =
 # writing to detected_*.json files.
 # ---------------------------------------------------------------------
 @app.post("/detections")
-def ingest_detection(body: DetectionIngestRequest):
+def ingest_detection(body: DetectionIngestRequest, background_tasks: BackgroundTasks):
     detected_at = body.detected_at.replace("Z", "")
     try:
         datetime.fromisoformat(detected_at)
@@ -101,9 +102,69 @@ def ingest_detection(body: DetectionIngestRequest):
     issue_code = result_args["sp_ingest_detection_arg11"]
     was_merged = result_args["sp_ingest_detection_arg12"]
 
+    # Only fire an alert the moment a NEW critical issue (e.g. an accident)
+    # is created — never on a re-detection merge, or departments would get
+    # emailed every time the camera re-confirms the same crash. Running it
+    # as a background task means this HTTP response returns immediately;
+    # the email/log write happens right after, without blocking the caller.
+    if not was_merged:
+        with get_cursor() as cur:
+            cur.execute("SELECT is_critical FROM issue_types WHERE type_key = %s", (body.type_key,))
+            type_row = cur.fetchone()
+        if type_row and type_row["is_critical"]:
+            background_tasks.add_task(
+                notify_departments_for_issue,
+                issue_id, issue_code, body.type_key, body.lat, body.lng, body.severity, detected_at,
+            )
+
     return {"issue_id": issue_id, "issue_code": issue_code, "merged_into_existing": bool(was_merged)}
+
+
+# ---------------------------------------------------------------------
+# Alert history — who got notified about a given issue, and when.
+# Handy for a dashboard panel or your SIH demo/report.
+# ---------------------------------------------------------------------
+@app.get("/alerts/{issue_code}")
+def get_alerts(issue_code: str, user: dict = Depends(get_current_user)):
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT al.alert_id, dc.department_name, dc.email, al.channel, al.status, al.sent_at
+            FROM alert_log al
+            JOIN issues i ON i.issue_id = al.issue_id
+            JOIN department_contacts dc ON dc.department_id = al.department_id
+            WHERE i.issue_code = %s
+            ORDER BY al.sent_at DESC
+            """,
+            (issue_code,),
+        )
+        rows = cur.fetchall()
+    for r in rows:
+        if r["sent_at"]:
+            r["sent_at"] = r["sent_at"].strftime("%Y-%m-%dT%H:%M:%SZ")
+    return rows
 
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------
+# Current user's profile — powers the avatar/profile dropdown in the
+# dashboard header. Reads whichever user the JWT belongs to.
+# ---------------------------------------------------------------------
+@app.get("/users/me")
+def get_my_profile(user: dict = Depends(get_current_user)):
+    with get_cursor() as cur:
+        cur.execute(
+            """SELECT full_name, email, job_title, govt_id_number, role, created_at
+               FROM users WHERE user_id = %s""",
+            (int(user["sub"]),),
+        )
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="User not found")
+    if row["created_at"]:
+        row["created_at"] = row["created_at"].strftime("%Y-%m-%dT%H:%M:%SZ")
+    return row

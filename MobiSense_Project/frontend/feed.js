@@ -360,9 +360,24 @@
     };
   }
 
+  function detectCategoryFromFilename(filename) {
+    const name = (filename || '').toLowerCase();
+    if (name.includes('pothole')) return 'pothole';
+    if (name.includes('garbage') || name.includes('trash') || name.includes('waste') || name.includes('dump')) return 'garbage';
+    if (name.includes('traffic') || name.includes('congestion') || name.includes('jam')) return 'traffic';
+    return null; // couldn't tell from the name — leave the current tab as-is
+  }
+
   function loadCustomVideoFile(file) {
     if (!DOM.videoEl || !file) return;
+
+    // Figure out which detection category this video actually belongs to
+    // BEFORE touching anything else, and set the "custom video" flag first
+    // so switchCategory() below won't try to overwrite our video source
+    // with its own default sample clip for that category.
+    const detectedCategory = detectCategoryFromFilename(file.name);
     state.isCustomVideoLoaded = true;
+
     const url = URL.createObjectURL(file);
     DOM.videoEl.src = url;
     DOM.videoEl.style.display = 'block';
@@ -370,9 +385,16 @@
     state.usingSimulation = false;
 
     if (DOM.videoSourceLabel) {
-      DOM.videoSourceLabel.textContent = `Loaded: ${file.name}`;
+      DOM.videoSourceLabel.textContent = detectedCategory
+        ? `Loaded: ${file.name} (auto-detected: ${FEED_CONFIG[detectedCategory].title})`
+        : `Loaded: ${file.name}`;
       DOM.videoSourceLabel.style.color = '#15803d';
     }
+
+    // Switch to the matching tab so the right detection list/telemetry
+    // shows up. If we couldn't tell from the filename, at least make the
+    // currently-active tab's data reload against this new video.
+    switchCategory(detectedCategory || state.activeCategory);
 
     DOM.videoEl.play().catch(() => {});
   }

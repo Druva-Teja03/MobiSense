@@ -56,6 +56,7 @@
     parking: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 17V7h4a3 3 0 0 1 0 6H9"/></svg>`,
     garbage: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`,
     traffic: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 11 2 11.5 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>`,
+    accident: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>`,
     default: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
     check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
     spinner: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`
@@ -74,22 +75,87 @@
     countPotholes: document.getElementById('count-potholes'),
     countTraffic: document.getElementById('count-traffic'),
     countGarbage: document.getElementById('count-garbage'),
+    countAccidents: document.getElementById('count-accidents'),
     searchInput: document.getElementById('search-input'),
     clearSearchBtn: document.getElementById('clear-search-btn'),
     toastContainer: document.getElementById('toast-container'),
     fitBoundsBtn: document.getElementById('fit-bounds-btn'),
     mapCenterCoords: document.getElementById('map-center-coords'),
     logoutBtn: document.getElementById('logout-btn'),
-    currentUserLabel: document.getElementById('current-user-label')
+    profileMenuWrapper: document.getElementById('profile-menu-wrapper'),
+    profileAvatarBtn: document.getElementById('profile-avatar-btn'),
+    profileAvatarInitial: document.getElementById('profile-avatar-initial'),
+    profileAvatarInitialLg: document.getElementById('profile-avatar-initial-lg'),
+    profileDropdown: document.getElementById('profile-dropdown'),
+    profileName: document.getElementById('profile-name'),
+    profileRole: document.getElementById('profile-role'),
+    profileEmail: document.getElementById('profile-email'),
+    profileJobTitle: document.getElementById('profile-job-title'),
+    profileGovtId: document.getElementById('profile-govt-id'),
+    profileJoined: document.getElementById('profile-joined')
   };
+
+  // --- Profile avatar + dropdown ---
+  function getInitial(name) {
+    return (name || '?').trim().charAt(0).toUpperCase() || '?';
+  }
+
+  function toggleProfileDropdown(forceOpen) {
+    if (!DOM.profileDropdown || !DOM.profileAvatarBtn) return;
+    const isOpen = !DOM.profileDropdown.hidden;
+    const nextOpen = forceOpen !== undefined ? forceOpen : !isOpen;
+    DOM.profileDropdown.hidden = !nextOpen;
+    DOM.profileAvatarBtn.setAttribute('aria-expanded', String(nextOpen));
+  }
+
+  async function loadProfile() {
+    // Show what we already know instantly (from login/signup response),
+    // then fill in the rest once /users/me responds.
+    const initial = getInitial(CURRENT_USER.full_name);
+    if (DOM.profileAvatarInitial) DOM.profileAvatarInitial.textContent = initial;
+    if (DOM.profileAvatarInitialLg) DOM.profileAvatarInitialLg.textContent = initial;
+    if (DOM.profileName) DOM.profileName.textContent = CURRENT_USER.full_name || 'Account';
+    if (DOM.profileRole) DOM.profileRole.textContent = CURRENT_USER.role || '—';
+
+    try {
+      const res = await fetch(`${CONFIG.API_URL.replace('/issues', '')}/users/me`, {
+        headers: CONFIG.HEADERS
+      });
+      if (res.status === 401) { logout(); return; }
+      if (!res.ok) return;
+      const profile = await res.json();
+
+      if (DOM.profileName) DOM.profileName.textContent = profile.full_name || '—';
+      if (DOM.profileRole) DOM.profileRole.textContent = profile.role || '—';
+      if (DOM.profileEmail) DOM.profileEmail.textContent = profile.email || '—';
+      if (DOM.profileJobTitle) DOM.profileJobTitle.textContent = profile.job_title || '—';
+      if (DOM.profileGovtId) DOM.profileGovtId.textContent = profile.govt_id_number || '—';
+      if (DOM.profileJoined && profile.created_at) {
+        DOM.profileJoined.textContent = new Date(profile.created_at).toLocaleDateString();
+      }
+      const initialFromServer = getInitial(profile.full_name);
+      if (DOM.profileAvatarInitial) DOM.profileAvatarInitial.textContent = initialFromServer;
+      if (DOM.profileAvatarInitialLg) DOM.profileAvatarInitialLg.textContent = initialFromServer;
+    } catch (err) {
+      // Silent fail is fine here — the header still shows what we had
+      // from login, just without the extra fields.
+    }
+  }
 
   // --- Initialization ---
   document.addEventListener('DOMContentLoaded', () => {
-    if (DOM.currentUserLabel) {
-      DOM.currentUserLabel.textContent = CURRENT_USER.full_name
-        ? `${CURRENT_USER.full_name} (${CURRENT_USER.role})`
-        : '';
+    loadProfile();
+    if (DOM.profileAvatarBtn) {
+      DOM.profileAvatarBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleProfileDropdown();
+      });
     }
+    document.addEventListener('click', (e) => {
+      if (DOM.profileMenuWrapper && !DOM.profileMenuWrapper.contains(e.target)) {
+        toggleProfileDropdown(false);
+      }
+    });
     if (DOM.logoutBtn) {
       DOM.logoutBtn.addEventListener('click', logout);
     }
@@ -165,7 +231,10 @@
       const typeKey = (issue.type || '').toLowerCase();
       let iconSvg = ICONS.pothole;
       let pinTypeClass = 'type-pothole';
-      if (typeKey.includes('park')) {
+      if (typeKey.includes('accident')) {
+        iconSvg = ICONS.accident;
+        pinTypeClass = 'type-accident';
+      } else if (typeKey.includes('park')) {
         iconSvg = ICONS.parking;
         pinTypeClass = 'type-parking';
       } else if (typeKey.includes('garb') || typeKey.includes('trash') || typeKey.includes('waste')) {
@@ -178,7 +247,7 @@
       if (isResolved) iconSvg = ICONS.check;
 
       const iconHtml = `
-        <div class="custom-map-pin ${isResolved ? 'resolved' : 'unresolved'} ${pinTypeClass} ${isSelected ? 'is-active' : ''}" data-id="${issue.id}">
+        <div class="custom-map-pin ${isResolved ? 'resolved' : 'unresolved'} ${pinTypeClass} ${isSelected ? 'is-active' : ''} ${(!isResolved && pinTypeClass === 'type-accident') ? 'pin-critical-pulse' : ''}" data-id="${issue.id}">
           ${iconSvg}
         </div>
       `;
@@ -356,6 +425,7 @@
         if (state.filterType === 'illegal_parking' && !typeStr.includes('park')) return false;
         if (state.filterType === 'garbage' && !typeStr.includes('garb') && !typeStr.includes('trash') && !typeStr.includes('waste')) return false;
         if ((state.filterType === 'heavy_traffic' || state.filterType === 'traffic') && !typeStr.includes('traffic')) return false;
+        if (state.filterType === 'accident' && !typeStr.includes('accident')) return false;
       }
 
       // Search Query filter (matches type, id, lat, lng, vehicle_count, traffic_level, item_count, severity)
@@ -420,10 +490,12 @@
     let potholes = 0;
     let traffic = 0;
     let garbage = 0;
+    let accidents = 0;
 
     state.issues.forEach(i => {
       const t = (i.type || '').toLowerCase();
-      if (t.includes('pothole')) potholes++;
+      if (t.includes('accident')) accidents++;
+      else if (t.includes('pothole')) potholes++;
       else if (t.includes('traffic')) traffic++;
       else if (t.includes('garb') || t.includes('trash') || t.includes('waste')) garbage++;
     });
@@ -431,6 +503,7 @@
     if (DOM.countPotholes) DOM.countPotholes.textContent = potholes;
     if (DOM.countTraffic) DOM.countTraffic.textContent = traffic;
     if (DOM.countGarbage) DOM.countGarbage.textContent = garbage;
+    if (DOM.countAccidents) DOM.countAccidents.textContent = accidents;
 
     // Resolution rate
     const ratePercent = total > 0 ? Math.round((resolved / total) * 100) : 0;
@@ -469,7 +542,10 @@
 
       let typeClass = 'type-pothole';
       let typeIcon = ICONS.pothole;
-      if (typeKey.includes('park')) {
+      if (typeKey.includes('accident')) {
+        typeClass = 'type-accident';
+        typeIcon = ICONS.accident;
+      } else if (typeKey.includes('park')) {
         typeClass = 'type-illegal_parking';
         typeIcon = ICONS.parking;
       } else if (typeKey.includes('garb') || typeKey.includes('trash') || typeKey.includes('waste')) {
