@@ -8,6 +8,8 @@ Endpoints:
   GET  /issues             Deduplicated issues for the dashboard map (auth required)
   PATCH /issues/{id}       Update an issue's status (auth required)
   POST /detections         Ingest one raw AI detection (called by ai-detection/*.py)
+  GET  /analytics/sla      Per-category resolution-time / overdue rollup (auth required)
+  GET  /analytics/hotspots Locations where an issue type has recurred 2+ times (auth required)
 """
 from datetime import datetime
 
@@ -157,6 +159,47 @@ def get_alerts(issue_code: str, user: dict = Depends(get_current_user)):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------
+# Analytics — SLA / time-to-resolution rollup (feature: SLA tracking)
+# Reads v_sla_metrics (database/07_feature_upgrade.sql). One row per
+# issue type: how many open vs resolved, average hours to resolve, and
+# how many open issues are currently past the 72h SLA target.
+# ---------------------------------------------------------------------
+@app.get("/analytics/sla")
+def get_sla_metrics(user: dict = Depends(get_current_user)):
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM v_sla_metrics ORDER BY overdue_count DESC, total_issues DESC")
+        rows = cur.fetchall()
+    for r in rows:
+        if r.get("avg_resolution_hours") is not None:
+            r["avg_resolution_hours"] = float(r["avg_resolution_hours"])
+    return rows
+
+
+# ---------------------------------------------------------------------
+# Analytics — recurring hotspots (feature: repeat-offender locations)
+# Reads v_recurring_hotspots (database/07_feature_upgrade.sql). Only
+# returns locations where the same issue type has been logged 2+ times
+# over the site's history (including past resolutions), which is the
+# strongest evidence that moving sensors catch what a static camera
+# would miss between visits.
+# ---------------------------------------------------------------------
+@app.get("/analytics/hotspots")
+def get_recurring_hotspots(user: dict = Depends(get_current_user)):
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM v_recurring_hotspots")
+        rows = cur.fetchall()
+    for r in rows:
+        r["avg_lat"] = float(r["avg_lat"])
+        r["avg_lng"] = float(r["avg_lng"])
+        if r.get("first_seen_at"):
+            r["first_seen_at"] = r["first_seen_at"].strftime("%Y-%m-%dT%H:%M:%SZ")
+        if r.get("last_seen_at"):
+            r["last_seen_at"] = r["last_seen_at"].strftime("%Y-%m-%dT%H:%M:%SZ")
+        r["issue_codes"] = (r.get("issue_codes") or "").split(",") if r.get("issue_codes") else []
+    return rows
 
 
 # ---------------------------------------------------------------------

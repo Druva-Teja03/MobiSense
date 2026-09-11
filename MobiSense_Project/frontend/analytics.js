@@ -15,6 +15,7 @@
 
   const CONFIG = {
     API_URL: 'http://localhost:8000/issues',
+    SLA_URL: 'http://localhost:8000/analytics/sla',
     HEADERS: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AUTH_TOKEN}` }
   };
 
@@ -43,6 +44,47 @@
       document.getElementById('an-category-bars').innerHTML = '<p class="cc-empty">Could not reach the backend API.</p>';
       document.getElementById('an-severity-bars').innerHTML = '';
     }
+    loadSla();
+  }
+
+  async function loadSla() {
+    const tbody = document.getElementById('an-sla-body');
+    if (!tbody) return;
+    try {
+      const res = await fetch(CONFIG.SLA_URL, { headers: CONFIG.HEADERS });
+      if (res.status === 401) { logout(); return; }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rows = await res.json();
+      renderSla(rows);
+    } catch (err) {
+      console.error('Analytics: SLA fetch failed', err);
+      tbody.innerHTML = '<tr><td colspan="5" class="cc-empty">Could not reach the backend API.</td></tr>';
+    }
+  }
+
+  function renderSla(rows) {
+    const tbody = document.getElementById('an-sla-body');
+    if (!rows || !rows.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="cc-empty">No incidents yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => {
+      const avgHours = r.avg_resolution_hours;
+      const avgLabel = avgHours === null || avgHours === undefined
+        ? '—'
+        : (avgHours < 1 ? '<1h' : avgHours >= 24 ? `${(avgHours / 24).toFixed(1)}d` : `${avgHours}h`);
+      const overdue = Number(r.overdue_count || 0);
+      const badgeClass = overdue > 0 ? '' : 'is-clear';
+      const badgeLabel = overdue > 0 ? `${overdue} overdue` : 'On track';
+      return `
+        <tr>
+          <td>${r.display_name || formatIssueType(r.type)}</td>
+          <td>${r.open_issues}</td>
+          <td>${r.resolved_issues}</td>
+          <td>${avgLabel}</td>
+          <td><span class="an-sla-overdue-badge ${badgeClass}">${badgeLabel}</span></td>
+        </tr>`;
+    }).join('');
   }
 
   function renderBars(containerId, entries, colorMap) {

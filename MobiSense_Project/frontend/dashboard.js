@@ -46,9 +46,29 @@
     isFetching: false,
     map: null,
     markersLayer: null,
+    heatLayer: null,
+    heatmapOn: false,
     autoRefreshTimer: null,
     lastUpdated: null
   };
+
+  // Severity -> heat weight (0-1). Unknown/low severities still show up
+  // faintly so the map isn't misleadingly empty, but critical issues
+  // (accidents, heavy traffic, high-severity garbage/potholes) dominate
+  // the gradient the way a real triage view should.
+  const SEVERITY_WEIGHT = {
+    critical: 1.0, severe: 1.0, major: 1.0,
+    high: 0.85, heavy: 0.85,
+    moderate: 0.55, medium: 0.55,
+    low: 0.3
+  };
+
+  function heatWeightOf(issue) {
+    const typeKey = (issue.type || '').toLowerCase();
+    if (typeKey.includes('accident')) return 1.0; // accidents always weigh max regardless of severity field
+    const sev = String(issue.severity || issue.traffic_level || '').toLowerCase();
+    return SEVERITY_WEIGHT[sev] !== undefined ? SEVERITY_WEIGHT[sev] : 0.4;
+  }
 
   // --- SVG Icons Definition ---
   const ICONS = {
@@ -80,6 +100,7 @@
     clearSearchBtn: document.getElementById('clear-search-btn'),
     toastContainer: document.getElementById('toast-container'),
     fitBoundsBtn: document.getElementById('fit-bounds-btn'),
+    heatmapToggleBtn: document.getElementById('heatmap-toggle-btn'),
     mapCenterCoords: document.getElementById('map-center-coords'),
     logoutBtn: document.getElementById('logout-btn'),
     profileMenuWrapper: document.getElementById('profile-menu-wrapper'),
@@ -315,6 +336,51 @@
     if (hasValidPoints && !state.selectedIssueId) {
       state.map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
     }
+
+    updateHeatmap();
+  }
+
+  // ==========================================================================
+  // Severity Heatmap Layer (toggle button, top-right map overlay)
+  // ==========================================================================
+  function updateHeatmap() {
+    if (!state.map || typeof L.heatLayer !== 'function') return;
+
+    // Heatmap always reflects UNRESOLVED issues only — a resolved pothole
+    // shouldn't still glow red on a "where's the danger right now" view.
+    const points = getFilteredIssues()
+      .filter(issue => (issue.status || '').toLowerCase() !== 'resolved')
+      .map(issue => {
+        const lat = parseFloat(issue.centroid_lat ?? issue.lat);
+        const lng = parseFloat(issue.centroid_lng ?? issue.lng);
+        if (isNaN(lat) || isNaN(lng)) return null;
+        return [lat, lng, heatWeightOf(issue)];
+      })
+      .filter(Boolean);
+
+    if (state.heatLayer) {
+      state.map.removeLayer(state.heatLayer);
+      state.heatLayer = null;
+    }
+
+    if (state.heatmapOn && points.length) {
+      state.heatLayer = L.heatLayer(points, {
+        radius: 32,
+        blur: 24,
+        maxZoom: 17,
+        gradient: { 0.3: '#22c55e', 0.55: '#f59e0b', 0.85: '#ef4444', 1.0: '#b91c1c' }
+      }).addTo(state.map);
+    }
+  }
+
+  function toggleHeatmap() {
+    state.heatmapOn = !state.heatmapOn;
+    if (DOM.heatmapToggleBtn) {
+      DOM.heatmapToggleBtn.classList.toggle('is-active', state.heatmapOn);
+    }
+    // Markers stay visible under the heat layer; only the heat overlay
+    // itself toggles, so users can still click through to resolve issues.
+    updateHeatmap();
   }
 
   // ==========================================================================
@@ -819,6 +885,11 @@
     // Fit bounds button
     if (DOM.fitBoundsBtn) {
       DOM.fitBoundsBtn.addEventListener('click', fitAllBounds);
+    }
+
+    // Severity heatmap toggle
+    if (DOM.heatmapToggleBtn) {
+      DOM.heatmapToggleBtn.addEventListener('click', toggleHeatmap);
     }
   }
 

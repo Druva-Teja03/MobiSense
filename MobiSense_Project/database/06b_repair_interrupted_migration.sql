@@ -1,91 +1,52 @@
 -- =====================================================================
--- MobiSense — Dedup Engine Upgrade
--- Run this AFTER 01_schema.sql .. 05_bangalore_seed.sql have already
--- been loaded. It only ALTERs/REPLACEs — no table is dropped, so your
--- existing users/issues/detections survive.
+-- MobiSense — Repair script for an interrupted 06_dedup_upgrade.sql run
+-- =====================================================================
+-- What happened: 06_dedup_upgrade.sql's ALTER TABLE on `issues`
+-- (adding centroid_lat/centroid_lng) errored with "Duplicate column
+-- name 'centroid_lat'" because those columns already existed from an
+-- earlier successful run. MySQL Workbench stops a script at its first
+-- error by default, so everything AFTER that statement in 06 never
+-- ran: issue_detections never got its vehicle_id/confidence columns,
+-- sp_ingest_detection was never replaced, and v_dashboard_issues was
+-- never recreated. That's why 07_feature_upgrade.sql then failed with
+-- "Unknown column 'd.vehicle_id'" — that column genuinely doesn't
+-- exist yet.
 --
--- This closes the 6 gaps identified in the Phase 1 audit:
---   1. Dedup radius was tuned for a static camera (15-30m). A moving
---      bus with GPS drift needs a much wider match window.
---   2. issues.lat/lng was frozen at the FIRST detection forever. There
---      was no running centroid, so "one marker, not three overlapping"
---      wasn't actually true once a bus passed the same pothole 3x from
---      slightly different GPS fixes.
---   3. There was no concept of WHICH vehicle reported a detection, so
---      "confirmed by 3 vehicles" was impossible to compute.
---   4. AI confidence was captured in the video-feed simulation JSON
---      only — a disconnected mock data path — never in the real
---      ingest payload.
---   5. A later low-confidence/low-severity detection could silently
---      overwrite a High severity issue (COALESCE just took whichever
---      value was non-null, not whichever was worse).
---   6. (Wiring, not schema — see frontend/feed.js.)
+-- This script picks up exactly where 06 left off. It is safe to run
+-- even if some of these objects already exist (DROP IF EXISTS / OR
+-- REPLACE everywhere), so you can't "duplicate-error" your way out of
+-- it again.
+--
+-- HOW TO RUN: open this file in MySQL Workbench, click the lightning-
+-- bolt "Execute" icon (or Ctrl+Shift+Enter) to run the whole script.
+-- Then re-run 07_feature_upgrade.sql.
 -- =====================================================================
 USE mobisense_db;
 
 -- ---------------------------------------------------------------------
--- 1. Widen dedup radii for a moving reporting vehicle + GPS drift.
---    Keeps 'accident' tight (20m) — you want crash reports to be a lot
---    more precise before merging two into one.
+-- 1. vehicle_id (who reported it) + confidence (how sure the model
+--    was) on the raw audit log. Guarded so re-running this is safe.
 -- ---------------------------------------------------------------------
-UPDATE issue_types SET dedup_radius_m = 120 WHERE type_key = 'pothole';
-UPDATE issue_types SET dedup_radius_m = 120 WHERE type_key = 'garbage';
-UPDATE issue_types SET dedup_radius_m = 200 WHERE type_key = 'heavy_traffic';
-UPDATE issue_types SET dedup_radius_m = 150 WHERE type_key = 'illegal_parking';
--- 'accident' intentionally left at its existing 20m from 04_accident_alerts.sql.
-
--- ---------------------------------------------------------------------
--- 2. Centroid columns on `issues`. lat/lng stay as the ORIGINAL first-
---    detection point (so nothing that already reads lat/lng breaks);
---    centroid_lat/centroid_lng are the running weighted average that
---    the map should actually plot the marker at.
---    Guarded with an information_schema check so re-running this
---    script (e.g. after fixing an earlier error) never fails with
---    "Duplicate column name" and halts the rest of the migration.
--- ---------------------------------------------------------------------
-SET @centroid_exists := (
+SET @col_exists := (
   SELECT COUNT(*) FROM information_schema.columns
-  WHERE table_schema = 'mobisense_db' AND table_name = 'issues' AND column_name = 'centroid_lat'
+  WHERE table_schema = 'mobisense_db'
+    AND table_name = 'issue_detections'
+    AND column_name = 'vehicle_id'
 );
 
-SET @sql := IF(@centroid_exists = 0,
-  'ALTER TABLE issues
-     ADD COLUMN centroid_lat DECIMAL(10,7) NULL AFTER lng,
-     ADD COLUMN centroid_lng DECIMAL(10,7) NULL AFTER centroid_lat',
-  'SELECT "centroid_lat/centroid_lng already exist — skipping" AS note'
-);
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
-
-UPDATE issues SET centroid_lat = lat, centroid_lng = lng WHERE centroid_lat IS NULL;
-
-ALTER TABLE issues
-  MODIFY COLUMN centroid_lat DECIMAL(10,7) NOT NULL,
-  MODIFY COLUMN centroid_lng DECIMAL(10,7) NOT NULL;
-
--- ---------------------------------------------------------------------
--- 3 & 4. vehicle_id (who reported it) + confidence (how sure the model
---    was) on the raw audit log. Both nullable — older detections from
---    before this migration simply won't have them. Same guard pattern
---    as above so this is safe to re-run too.
--- ---------------------------------------------------------------------
-SET @vehicle_id_exists := (
-  SELECT COUNT(*) FROM information_schema.columns
-  WHERE table_schema = 'mobisense_db' AND table_name = 'issue_detections' AND column_name = 'vehicle_id'
-);
-
-SET @sql := IF(@vehicle_id_exists = 0,
+SET @sql := IF(@col_exists = 0,
   'ALTER TABLE issue_detections
-     ADD COLUMN vehicle_id  VARCHAR(60)   NULL AFTER vehicle_count,
-     ADD COLUMN confidence  DECIMAL(4,3)  NULL AFTER severity',
+     ADD COLUMN vehicle_id VARCHAR(60)  NULL AFTER vehicle_count,
+     ADD COLUMN confidence DECIMAL(4,3) NULL AFTER severity',
   'SELECT "vehicle_id/confidence already exist — skipping" AS note'
 );
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- ---------------------------------------------------------------------
--- 5. Severity-rank helper — used to enforce "never silently downgrade".
---    Handles both 'moderate' and 'medium' since the frontend/video-feed
---    fallback JSON uses 'medium' while the garbage seed data uses
---    'moderate' for the same concept.
+-- 2. Severity-rank helper function.
 -- ---------------------------------------------------------------------
 DROP FUNCTION IF EXISTS fn_severity_rank;
 
@@ -104,21 +65,14 @@ BEGIN
   ELSEIF v = 'low' THEN
     RETURN 1;
   ELSE
-    RETURN 0; -- unknown/NULL never outranks a known severity
+    RETURN 0;
   END IF;
 END$$
 DELIMITER ;
 
 -- ---------------------------------------------------------------------
--- Replace sp_ingest_detection with the upgraded version:
---   - accepts p_vehicle_id, p_confidence (2 new IN params, inserted
---     before the OUT params — see backend/main.py for the matching
---     callproc() positional update)
---   - recomputes centroid_lat/lng as a running weighted average on
---     every merge, instead of leaving lat/lng frozen at the first hit
---   - severity can only move up (or hold), never down, on a merge
---   - "closest candidate wins" ordering is unchanged (it already
---     existed via ORDER BY ST_Distance_Sphere ASC) — just widened radii
+-- 3. sp_ingest_detection — the version with vehicle_id/confidence IN
+--    params and running-centroid logic.
 -- ---------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS sp_ingest_detection;
 
@@ -163,7 +117,6 @@ BEGIN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Unknown issue type_key passed to sp_ingest_detection';
   END IF;
 
-  -- Step 1: closest OPEN issue of the same type within its dedup radius.
   SELECT issue_id INTO v_existing_id
   FROM issues
   WHERE issue_type_id = v_type_id
@@ -173,20 +126,14 @@ BEGIN
   LIMIT 1;
 
   IF v_existing_id IS NOT NULL THEN
-    -- Lock the row so two near-simultaneous detections for the same
-    -- issue can't both read the same "old" centroid/count and race.
     SELECT severity, centroid_lat, centroid_lng, detection_count
       INTO v_old_severity, v_old_centroid_lat, v_old_centroid_lng, v_old_count
     FROM issues WHERE issue_id = v_existing_id
     FOR UPDATE;
 
-    -- Running weighted centroid — folds THIS detection's point into the
-    -- average of every detection merged so far, not just the first one.
     SET v_new_centroid_lat = ((v_old_centroid_lat * v_old_count) + p_lat) / (v_old_count + 1);
     SET v_new_centroid_lng = ((v_old_centroid_lng * v_old_count) + p_lng) / (v_old_count + 1);
 
-    -- Never-downgrade rule: only adopt the new severity if it's at
-    -- least as bad as what's already recorded.
     SET v_new_severity = CASE
       WHEN p_severity IS NOT NULL
            AND fn_severity_rank(p_severity) >= fn_severity_rank(v_old_severity)
@@ -206,13 +153,12 @@ BEGIN
     SET p_issue_id = v_existing_id;
     SET p_was_merged = TRUE;
   ELSE
-    -- Genuinely new issue: centroid starts equal to the first point.
     INSERT INTO issues (
       issue_code, issue_type_id, lat, lng, centroid_lat, centroid_lng, geo_point, status,
       severity, traffic_level, detection_count,
       first_detected_at, last_detected_at
     ) VALUES (
-      CONCAT('ISSUE-', LPAD(0, 6, '0')), -- placeholder, fixed below
+      CONCAT('ISSUE-', LPAD(0, 6, '0')),
       v_type_id, p_lat, p_lng, p_lat, p_lng, v_point, 'unresolved',
       p_severity, p_traffic_level, 1,
       p_detected_at, p_detected_at
@@ -230,8 +176,6 @@ BEGIN
 
   SELECT issue_code INTO p_issue_code FROM issues WHERE issue_id = p_issue_id;
 
-  -- Always log the raw detection for audit/history, now with WHICH
-  -- vehicle reported it and HOW confident the model was.
   INSERT INTO issue_detections (
     issue_id, issue_type_id, lat, lng, geo_point,
     vehicle_count, vehicle_id, traffic_level, item_count, severity, confidence,
@@ -245,15 +189,9 @@ END$$
 DELIMITER ;
 
 -- ---------------------------------------------------------------------
--- Dashboard view — add the fields the audit called out as missing:
---   centroid_lat/centroid_lng : where the marker should actually plot
---   confirming_vehicle_count  : COUNT(DISTINCT vehicle_id) — "confirmed
---                                by N vehicles" (kept separate from the
---                                existing `vehicle_count`, which is a
---                                traffic-density headcount from a single
---                                frame, not the number of reporters)
---   avg_confidence            : mean AI confidence across all detections
---                                merged into this issue
+-- 4. Rebuild v_dashboard_issues with the confirming_vehicle_count /
+--    avg_confidence fields (07_feature_upgrade.sql will extend this
+--    further with SLA fields when you re-run it next).
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE VIEW v_dashboard_issues AS
 SELECT
@@ -284,8 +222,8 @@ SELECT
 FROM issues i
 JOIN issue_types it ON it.issue_type_id = i.issue_type_id;
 
--- Sanity checks after loading:
--- SELECT type_key, dedup_radius_m FROM issue_types;
--- SELECT id, type, lat, lng, centroid_lat, centroid_lng, detection_count,
---        confirming_vehicle_count, avg_confidence, severity
--- FROM v_dashboard_issues ORDER BY id;
+-- ---------------------------------------------------------------------
+-- Verify the repair worked before moving on:
+-- ---------------------------------------------------------------------
+SELECT COUNT(*) AS should_be_1 FROM information_schema.columns
+WHERE table_schema = 'mobisense_db' AND table_name = 'issue_detections' AND column_name = 'vehicle_id';

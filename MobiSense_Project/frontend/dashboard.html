@@ -166,6 +166,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
             <span>Center All</span>
           </button>
+          <button class="map-btn" id="heatmap-toggle-btn" title="Toggle severity heatmap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8 6 5 9.5 5 13a7 7 0 0 0 14 0c0-3.5-3-7-7-11Z"/></svg>
+            <span>Heatmap</span>
+          </button>
         </div>
 
         <!-- Floating Map Overlay: Bottom-Left Legend -->
@@ -286,6 +290,8 @@
 
   <!-- Leaflet GIS Engine Script -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet.heat — severity-weighted heatmap layer (toggle in map overlay) -->
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 
   <!-- Shared shell (sidebar collapse, logout) -->
   <script src="shell.js"></script>

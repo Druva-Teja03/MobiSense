@@ -76,7 +76,8 @@ mysql -u root -p < 02_procedures.sql
 mysql -u root -p < 03_views_and_seed.sql
 mysql -u root -p < 04_accident_alerts.sql      # optional: accident type + department alerts
 mysql -u root -p < 05_bangalore_seed.sql       # optional: repositions demo pins to Bangalore
-mysql -u root -p < 06_dedup_upgrade.sql        # dedup engine upgrade — run this LAST
+mysql -u root -p < 06_dedup_upgrade.sql        # dedup engine upgrade
+mysql -u root -p < 07_feature_upgrade.sql      # SLA + recurring hotspots — run this LAST
 ```
 
 `06_dedup_upgrade.sql` widens the dedup radii for a moving reporting
@@ -236,6 +237,28 @@ The response tells you whether it merged into an existing issue:
 ```json
 {"issue_id": 11, "issue_code": "ISSUE-000011", "merged_into_existing": true}
 ```
+
+**Offline buffering, done for you:** rather than calling `requests.post`
+directly, use `ai-detection/ingest_client.py`:
+```python
+from ingest_client import submit_detection
+
+submit_detection({
+    "type_key": "pothole",
+    "lat": 12.3051,
+    "lng": 76.6551,
+    "detected_at": "2026-09-12T10:30:00Z",
+    "severity": "high",
+    "source_image": filename,
+    "vehicle_id": "BUS-014",
+    "confidence": 0.87,
+})
+```
+If the backend is unreachable (no signal, backend down), the detection
+is queued to `ai-detection/offline_queue.json` instead of being lost,
+and automatically flushed — in original timestamp order — the next
+time `submit_detection()` succeeds. Run `python demo_offline_buffer.py`
+for a scripted demo of this you can show judges directly.
 
 ---
 

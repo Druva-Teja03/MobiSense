@@ -17,6 +17,7 @@
 
   const CONFIG = {
     API_URL: 'http://localhost:8000/issues',
+    HOTSPOTS_URL: 'http://localhost:8000/analytics/hotspots',
     HEADERS: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AUTH_TOKEN}` }
   };
 
@@ -37,6 +38,50 @@
       console.error('Fleet Intelligence: fetch failed', err);
       document.getElementById('fleet-category-body').innerHTML =
         '<tr><td colspan="4" class="ic-empty">Could not reach the backend API.</td></tr>';
+    }
+    loadHotspots();
+  }
+
+  async function loadHotspots() {
+    const tbody = document.getElementById('fleet-hotspot-body');
+    if (!tbody) return;
+    try {
+      const res = await fetch(CONFIG.HOTSPOTS_URL, { headers: CONFIG.HEADERS });
+      if (res.status === 401) { logout(); return; }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rows = await res.json();
+      renderHotspots(rows);
+    } catch (err) {
+      console.error('Fleet Intelligence: hotspots fetch failed', err);
+      tbody.innerHTML = '<tr><td colspan="6" class="ic-empty">Could not reach the backend API.</td></tr>';
+    }
+  }
+
+  function renderHotspots(rows) {
+    const tbody = document.getElementById('fleet-hotspot-body');
+    if (!rows || !rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="ic-empty">No recurring hotspots yet — every location has only been reported once so far.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => `
+      <tr class="ic-row">
+        <td>${formatIssueType(r.type)}</td>
+        <td>${Number(r.avg_lat).toFixed(4)}, ${Number(r.avg_lng).toFixed(4)}</td>
+        <td><span class="fleet-hotspot-count">${r.occurrence_count}&times;</span></td>
+        <td>${r.resolved_count} resolved / ${r.active_count} active</td>
+        <td>${formatDate(r.first_seen_at)}</td>
+        <td>${formatDate(r.last_seen_at)}</td>
+      </tr>`).join('');
+  }
+
+  function formatDate(isoStr) {
+    if (!isoStr) return '—';
+    try {
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return isoStr;
+      return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch (e) {
+      return isoStr;
     }
   }
 
@@ -88,7 +133,7 @@
       return;
     }
     tbody.innerHTML = rows.map(([type, stats]) => `
-      <tr>
+      <tr class="ic-row">
         <td>${formatIssueType(type)}</td>
         <td>${stats.incidents}</td>
         <td>${stats.observations}</td>

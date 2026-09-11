@@ -636,6 +636,17 @@ input, select {
   height: 14px;
 }
 
+.map-btn.is-active {
+  background-color: #b45309;
+  color: #fff;
+  border-color: #b45309;
+}
+
+.map-btn.is-active:hover {
+  background-color: #92400e;
+  color: #fff;
+}
+
 /* Custom Marker Styling */
 .custom-map-pin {
   display: flex;

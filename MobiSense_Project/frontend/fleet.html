@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="shell.css">
   <link rel="stylesheet" href="command-center.css">
+  <link rel="stylesheet" href="incidents.css">
   <link rel="stylesheet" href="fleet.css">
 </head>
 <body>
@@ -100,6 +101,17 @@
             <table class="ic-table">
               <thead><tr><th>Category</th><th>Unique Incidents</th><th>Total AI Observations</th><th>Avg. Observations / Incident</th></tr></thead>
               <tbody id="fleet-category-body"><tr><td colspan="4" class="ic-empty">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="cc-card">
+          <div class="cc-card-header"><span class="cc-card-title">Recurring Hotspots</span></div>
+          <p class="fleet-hotspot-subtitle">Same issue type re-detected at the same spot more than once — proof that a moving fleet catches problems a one-time inspection would miss.</p>
+          <div class="ic-table-wrap" style="box-shadow:none;border:none;">
+            <table class="ic-table">
+              <thead><tr><th>Category</th><th>Location</th><th>Times Reported</th><th>Resolved / Active</th><th>First Seen</th><th>Last Seen</th></tr></thead>
+              <tbody id="fleet-hotspot-body"><tr><td colspan="6" class="ic-empty">Loading…</td></tr></tbody>
             </table>
           </div>
         </section>

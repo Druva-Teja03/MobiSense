@@ -119,3 +119,57 @@
   height: 8px;
   border-radius: 50%;
 }
+
+/* --- SLA / Time-to-Resolution card --- */
+.an-sla-target-pill {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text-muted);
+  background-color: var(--bg-subtle);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+}
+
+.an-sla-table-wrap {
+  overflow: auto;
+}
+
+.an-sla-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.an-sla-table thead th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.2px;
+  color: var(--text-muted);
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.an-sla-table tbody td {
+  padding: 11px 20px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+
+.an-sla-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.an-sla-overdue-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 650;
+  color: #b91c1c;
+}
+
+.an-sla-overdue-badge.is-clear {
+  color: var(--status-resolved-dot);
+}
