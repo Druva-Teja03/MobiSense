@@ -32,8 +32,8 @@
       'Authorization': `Bearer ${AUTH_TOKEN}`
     },
     AUTO_REFRESH_INTERVAL_MS: 30000,
-    DEFAULT_CENTER: [12.2958, 76.6394], // Mysuru, Karnataka coordinates
-    DEFAULT_ZOOM: 14
+    DEFAULT_CENTER: [12.9716, 77.5946], // Bengaluru (Bangalore), Karnataka coordinates
+    DEFAULT_ZOOM: 12
   };
 
   // --- State ---
