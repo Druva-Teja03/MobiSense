@@ -1,6 +1,7 @@
 .an-reduction-card {
   padding: 22px 26px;
   min-height: auto;
+  flex-shrink: 0;
 }
 
 .an-reduction-row {
