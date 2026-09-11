@@ -1,0 +1,233 @@
+/* ==========================================================================
+   MobiSense — Application Shell (Command Center navigation)
+   Replaces the old "GIS Map | Video Feed" header tabs with a persistent,
+   collapsible left sidebar shared by every authenticated page.
+   ========================================================================== */
+
+.app-shell {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------------------
+   Left Nav
+   --------------------------------------------------------------------- */
+.app-nav {
+  flex-shrink: 0;
+  width: var(--nav-width-expanded);
+  background-color: var(--bg-surface);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  transition: width 200ms ease;
+  z-index: 1100;
+}
+
+.app-shell.is-nav-collapsed .app-nav {
+  width: var(--nav-width-collapsed);
+}
+
+.app-nav-brand {
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.app-nav-brand img {
+  height: 32px;
+  width: 32px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.app-nav-brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.app-nav-brand-text strong {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: var(--text-primary);
+}
+
+.app-nav-brand-text span {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.app-shell.is-nav-collapsed .app-nav-brand-text {
+  display: none;
+}
+
+.app-nav-links {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-nav-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  padding: 14px 10px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.app-shell.is-nav-collapsed .app-nav-section-label {
+  display: none;
+}
+
+.app-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.app-nav-link svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.app-nav-link:hover {
+  background-color: var(--bg-subtle);
+  color: var(--text-primary);
+}
+
+.app-nav-link.is-active {
+  background-color: var(--accent-primary-subtle);
+  color: var(--accent-primary);
+}
+
+.app-nav-link-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-shell.is-nav-collapsed .app-nav-link-label {
+  display: none;
+}
+
+.app-nav-link-tag {
+  margin-left: auto;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+}
+
+.app-shell.is-nav-collapsed .app-nav-link-tag {
+  display: none;
+}
+
+.app-nav-footer {
+  border-top: 1px solid var(--border-color);
+  padding: 10px;
+  flex-shrink: 0;
+}
+
+.app-nav-collapse-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 550;
+}
+
+.app-nav-collapse-btn:hover {
+  background-color: var(--bg-subtle);
+  color: var(--text-primary);
+}
+
+.app-nav-collapse-btn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  transition: transform 200ms ease;
+}
+
+.app-shell.is-nav-collapsed .app-nav-collapse-btn svg {
+  transform: rotate(180deg);
+}
+
+.app-shell.is-nav-collapsed .app-nav-collapse-btn span {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------
+   Content column (everything to the right of the nav)
+   --------------------------------------------------------------------- */
+.app-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Old .app-container rules (height:100vh/width:100vw) now apply one
+   level down as .app-content, so pages that still use .app-container
+   internally get the same flex-column behaviour without a rewrite. */
+.app-content .app-container {
+  height: 100%;
+  width: 100%;
+}
+
+/* ---------------------------------------------------------------------
+   Responsive: collapse the nav automatically below tablet width
+   --------------------------------------------------------------------- */
+@media (max-width: 980px) {
+  .app-nav {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--nav-width-collapsed);
+  }
+  .app-shell:not(.is-nav-collapsed) .app-nav {
+    width: var(--nav-width-expanded);
+    box-shadow: var(--shadow-overlay);
+  }
+  .app-content {
+    margin-left: var(--nav-width-collapsed);
+  }
+  .app-shell.is-nav-collapsed .app-nav-brand-text,
+  .app-shell.is-nav-collapsed .app-nav-link-label,
+  .app-shell.is-nav-collapsed .app-nav-section-label {
+    display: none;
+  }
+}

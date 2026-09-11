@@ -54,6 +54,12 @@ def get_issues(user: dict = Depends(get_current_user)):
     for r in rows:
         r["lat"] = float(r["lat"])
         r["lng"] = float(r["lng"])
+        if r.get("centroid_lat") is not None:
+            r["centroid_lat"] = float(r["centroid_lat"])
+        if r.get("centroid_lng") is not None:
+            r["centroid_lng"] = float(r["centroid_lng"])
+        if r.get("avg_confidence") is not None:
+            r["avg_confidence"] = float(r["avg_confidence"])
         if r["timestamp"]:
             r["timestamp"] = r["timestamp"].strftime("%Y-%m-%dT%H:%M:%SZ")
     return rows
@@ -87,20 +93,23 @@ def ingest_detection(body: DetectionIngestRequest, background_tasks: BackgroundT
 
     with get_cursor(commit=True) as cur:
         # mysql-connector-python (dictionary cursor) returns OUT params in a
-        # dict keyed "<proc_name>_arg<1-indexed position>". Our OUT params
-        # are the 10th/11th/12th arguments (p_issue_id, p_issue_code, p_was_merged).
+        # dict keyed "<proc_name>_arg<1-indexed position>". Since
+        # 06_dedup_upgrade.sql added p_vehicle_id/p_confidence as IN params
+        # before the OUT params, the OUT params are now the 12th/13th/14th
+        # arguments (p_issue_id, p_issue_code, p_was_merged) — not 10/11/12.
         result_args = cur.callproc(
             "sp_ingest_detection",
             [
                 body.type_key, body.lat, body.lng, detected_at,
                 body.vehicle_count, body.traffic_level, body.item_count,
                 body.severity, body.source_image,
+                body.vehicle_id, body.confidence,
                 0, "", False,  # OUT params — placeholders, connector fills these
             ],
         )
-    issue_id = result_args["sp_ingest_detection_arg10"]
-    issue_code = result_args["sp_ingest_detection_arg11"]
-    was_merged = result_args["sp_ingest_detection_arg12"]
+    issue_id = result_args["sp_ingest_detection_arg12"]
+    issue_code = result_args["sp_ingest_detection_arg13"]
+    was_merged = result_args["sp_ingest_detection_arg14"]
 
     # Only fire an alert the moment a NEW critical issue (e.g. an accident)
     # is created — never on a re-detection merge, or departments would get

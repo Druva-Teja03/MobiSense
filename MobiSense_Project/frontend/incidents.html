@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MobiSense — Incident Center | Smart India Hackathon</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="shell.css">
+  <link rel="stylesheet" href="incidents.css">
+</head>
+<body>
+
+  <div class="app-shell" id="app-shell">
+
+    <nav class="app-nav">
+      <div class="app-nav-brand">
+        <img src="logo.jpeg" alt="MobiSense Logo">
+        <div class="app-nav-brand-text"><strong>MobiSense</strong><span>Urban Intelligence</span></div>
+      </div>
+      <div class="app-nav-links">
+        <span class="app-nav-section-label">Overview</span>
+        <a href="command-center.html" class="app-nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+          <span class="app-nav-link-label">Command Center</span>
+        </a>
+        <span class="app-nav-section-label">Intelligence</span>
+        <a href="dashboard.html" class="app-nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span class="app-nav-link-label">Live City Map</span>
+        </a>
+        <a href="feed.html" class="app-nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+          <span class="app-nav-link-label">AI Detection Feed</span>
+        </a>
+        <a href="incidents.html" class="app-nav-link is-active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          <span class="app-nav-link-label">Incidents</span>
+        </a>
+        <span class="app-nav-section-label">Operations</span>
+        <a href="fleet.html" class="app-nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="7" width="15" height="11" rx="1.5"/><path d="M16 10h3.5a1.5 1.5 0 0 1 1.3.76L23 15v3h-2"/><circle cx="6" cy="18.5" r="1.6"/><circle cx="17.5" cy="18.5" r="1.6"/></svg>
+          <span class="app-nav-link-label">Fleet Intelligence</span>
+        </a>
+        <a href="analytics.html" class="app-nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          <span class="app-nav-link-label">Analytics</span>
+        </a>
+      </div>
+      <div class="app-nav-footer">
+        <button class="app-nav-collapse-btn" id="nav-collapse-btn" title="Collapse sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+          <span>Collapse</span>
+        </button>
+      </div>
+    </nav>
+
+    <div class="app-content">
+      <div class="ic-page">
+
+        <header class="ic-header">
+          <div>
+            <h1>Incident Center</h1>
+            <p>Every deduplicated urban incident — one row per real-world problem, not per AI frame.</p>
+          </div>
+          <span class="ic-count-pill" id="ic-count-pill">— incidents</span>
+        </header>
+
+        <div class="ic-toolbar">
+          <div class="ic-tabs" id="ic-status-tabs">
+            <button class="ic-tab is-active" data-status="all">All</button>
+            <button class="ic-tab" data-status="unresolved">Unresolved</button>
+            <button class="ic-tab" data-status="resolved">Resolved</button>
+          </div>
+          <div class="ic-chips" id="ic-category-chips">
+            <button class="ic-chip is-active" data-type="all">All</button>
+            <button class="ic-chip" data-type="pothole">Potholes</button>
+            <button class="ic-chip" data-type="heavy_traffic">Traffic</button>
+            <button class="ic-chip" data-type="garbage">Garbage</button>
+            <button class="ic-chip" data-type="accident">Accidents</button>
+          </div>
+          <input type="text" class="ic-search" id="ic-search" placeholder="Search by ID, category, coordinates…">
+        </div>
+
+        <div class="ic-table-wrap">
+          <table class="ic-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Incident</th>
+                <th>Category</th>
+                <th>Severity</th>
+                <th>AI Observations</th>
+                <th>First Detected</th>
+                <th>Last Detected</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="ic-table-body">
+              <tr><td colspan="8" class="ic-empty">Loading incidents…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="shell.js"></script>
+  <script src="incidents.js"></script>
+</body>
+</html>

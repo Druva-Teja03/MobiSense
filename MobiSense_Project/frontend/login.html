@@ -927,7 +927,7 @@
         // If a token already exists (still logged in), skip straight
         // to the dashboard instead of showing the login form again.
         if (localStorage.getItem("mobisense_token")) {
-          window.location.href = "dashboard.html";
+          window.location.href = "command-center.html";
         }
 
         const tabLogin = document.getElementById("tab-login");
@@ -1129,7 +1129,7 @@
                 }),
               );
               showBanner("Signed in — redirecting...", "success");
-              window.location.href = "dashboard.html";
+              window.location.href = "command-center.html";
             } catch (err) {
               showBanner(
                 "Couldn't reach the server. Is the backend running?",
@@ -1177,7 +1177,7 @@
                 }),
               );
               showBanner("Account created — redirecting...", "success");
-              window.location.href = "dashboard.html";
+              window.location.href = "command-center.html";
             } catch (err) {
               showBanner(
                 "Couldn't reach the server. Is the backend running?",

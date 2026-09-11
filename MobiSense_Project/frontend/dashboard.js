@@ -219,8 +219,11 @@
     const filtered = getFilteredIssues();
 
     filtered.forEach(issue => {
-      const lat = parseFloat(issue.lat);
-      const lng = parseFloat(issue.lng);
+      // Prefer the running centroid (v_dashboard_issues.centroid_lat/lng) so
+      // an issue merged from several slightly-offset GPS fixes plots as ONE
+      // marker at its average position, not frozen at the first detection.
+      const lat = parseFloat(issue.centroid_lat ?? issue.lat);
+      const lng = parseFloat(issue.centroid_lng ?? issue.lng);
 
       if (isNaN(lat) || isNaN(lng)) return;
 
@@ -352,6 +355,14 @@
       state.lastUpdated = new Date();
       updateSyncTimeDisplay();
       renderDashboard();
+
+      // Deep-link support: Command Center / Incidents / Fleet pages link
+      // here as dashboard.html?focus=<id> to jump straight to an incident.
+      if (!state.hasAppliedFocusParam) {
+        state.hasAppliedFocusParam = true;
+        const focusId = new URLSearchParams(window.location.search).get('focus');
+        if (focusId) selectIssue(focusId, true);
+      }
     } catch (error) {
       console.error('Error fetching MobiSense issues:', error);
       showToast('Could not sync with live API. Retaining current data.', 'error');

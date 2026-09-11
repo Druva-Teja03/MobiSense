@@ -6,6 +6,12 @@
 (function () {
   'use strict';
 
+  // --- Auth guard: same rule as every other Command Center page. ---
+  if (!localStorage.getItem('mobisense_token')) {
+    window.location.href = 'login.html';
+    return;
+  }
+
   // --- Embedded Fallback Datasets (Ensures offline/local file:// zero-config operation) ---
   const DATA_FALLBACKS = {
     pothole: [
@@ -39,6 +45,45 @@
       { id: "garbage_issue_007", type: "garbage", item_count: 21, severity: "high", confidence: 0.97, frame_number: 660, timestamp_in_video: 22.0 }
     ]
   };
+
+  // --- Backend wiring config ---------------------------------------------
+  // Real ingestion: as the "camera → detections" story plays out, each
+  // detection that becomes active gets POSTed to the real dedup engine
+  // (backend/main.py -> sp_ingest_detection) with a simulated GPS fix, so
+  // "7 observations -> 2 incidents" is something the backend actually
+  // computed, not just asserted by the UI.
+  const INGEST_CONFIG = {
+    API_URL: 'http://localhost:8000/detections',
+    VEHICLE_ID: 'MOBI-VAN-01', // the single reporting vehicle for this demo feed
+    // A short fixed route through Bengaluru (matches dashboard.js's default
+    // map center) that the "vehicle" is assumed to be driving during
+    // playback. Real lat/lng = interpolated point along this route +
+    // small random jitter, to emulate GPS drift between passes.
+    ROUTE: [
+      { lat: 12.9716, lng: 77.5946 },
+      { lat: 12.9750, lng: 77.6010 },
+      { lat: 12.9800, lng: 77.6080 },
+      { lat: 12.9770, lng: 77.6150 },
+      { lat: 12.9700, lng: 77.6120 },
+      { lat: 12.9650, lng: 77.6040 },
+      { lat: 12.9680, lng: 77.5970 }
+    ],
+    JITTER_METERS: 25 // simulated GPS drift, meters
+  };
+
+  // Type keys the backend/database actually know about (see
+  // database/01_schema.sql issue_types). The feed's internal category
+  // keys ('traffic') don't always match 1:1.
+  const TYPE_KEY_MAP = {
+    pothole: 'pothole',
+    garbage: 'garbage',
+    traffic: 'heavy_traffic',
+    heavy_traffic: 'heavy_traffic'
+  };
+
+  // Detections already sent to the backend this session, so scrubbing
+  // back and forth over the same moment doesn't re-POST duplicates.
+  const ingestedIds = new Set();
 
   // --- Configuration ---
   const FEED_CONFIG = {
@@ -595,7 +640,136 @@
       state.activeIssueId = newActiveId;
       highlightActiveCard(newActiveId);
       updateTimelineMarkerHighlights(newActiveId);
+      if (activeDetection) {
+        ingestDetectionIfNeeded(activeDetection);
+      }
     }
+  }
+
+  // ==========================================================================
+  // Real ingestion wiring — POST /detections (item 6 from the Phase 1 audit)
+  // ==========================================================================
+
+  /**
+   * Interpolates a lat/lng along INGEST_CONFIG.ROUTE for how far through
+   * the clip we are (0 = start, 1 = end), then adds small random jitter to
+   * simulate GPS drift — so the same real-world spot, detected on two
+   * different passes, doesn't land on the exact same coordinate (which is
+   * realistic, and is *why* the dedup radius needs to be wide enough to
+   * still catch it as the same issue).
+   */
+  function routePositionForFraction(frac) {
+    const route = INGEST_CONFIG.ROUTE;
+    const clamped = Math.max(0, Math.min(1, frac || 0));
+    const segCount = route.length - 1;
+    const segFloat = clamped * segCount;
+    const segIndex = Math.min(segCount - 1, Math.floor(segFloat));
+    const segFrac = segFloat - segIndex;
+
+    const a = route[segIndex];
+    const b = route[segIndex + 1];
+    const lat = a.lat + (b.lat - a.lat) * segFrac;
+    const lng = a.lng + (b.lng - a.lng) * segFrac;
+
+    // ~1 degree latitude ≈ 111,320m; longitude shrinks by cos(latitude).
+    const jitterM = INGEST_CONFIG.JITTER_METERS;
+    const jitterLat = ((Math.random() - 0.5) * 2 * jitterM) / 111320;
+    const jitterLng = ((Math.random() - 0.5) * 2 * jitterM) / (111320 * Math.cos(lat * Math.PI / 180));
+
+    return { lat: lat + jitterLat, lng: lng + jitterLng };
+  }
+
+  function severityFromConfidence(confidence) {
+    const c = parseFloat(confidence);
+    if (isNaN(c)) return null;
+    if (c >= 0.85) return 'high';
+    if (c >= 0.7) return 'moderate';
+    return 'low';
+  }
+
+  function normalizedTrafficLevel(rawLevel) {
+    const s = (rawLevel || '').toLowerCase();
+    if (s.includes('gridlock') || s.includes('severe')) return 'severe';
+    if (s.includes('heavy')) return 'heavy';
+    return 'moderate';
+  }
+
+  function buildIngestPayload(issue) {
+    const typeKey = TYPE_KEY_MAP[issue.type] || issue.type;
+    const frac = state.videoDuration > 0
+      ? (parseFloat(issue.timestamp_in_video) || 0) / state.videoDuration
+      : 0;
+    const pos = routePositionForFraction(frac);
+
+    const payload = {
+      type_key: typeKey,
+      lat: Number(pos.lat.toFixed(7)),
+      lng: Number(pos.lng.toFixed(7)),
+      detected_at: new Date().toISOString(), // wall-clock ingestion time
+      source_image: issue.id,
+      vehicle_id: INGEST_CONFIG.VEHICLE_ID,
+      confidence: issue.confidence !== undefined ? parseFloat(issue.confidence) : null
+    };
+
+    if (typeKey === 'heavy_traffic') {
+      payload.vehicle_count = issue.vehicle_count || null;
+      payload.traffic_level = normalizedTrafficLevel(issue.traffic_level);
+    } else if (typeKey === 'garbage') {
+      payload.item_count = issue.item_count || null;
+      payload.severity = issue.severity || severityFromConfidence(issue.confidence);
+    } else {
+      // pothole (and anything else without its own severity field) — derive
+      // a severity from confidence so the never-downgrade rule has
+      // something real to compare merges against.
+      payload.severity = severityFromConfidence(issue.confidence);
+    }
+
+    return payload;
+  }
+
+  async function ingestDetectionIfNeeded(issue) {
+    if (!issue || !issue.id || ingestedIds.has(issue.id)) return;
+    ingestedIds.add(issue.id); // mark immediately so a fast re-trigger can't double-send
+
+    const payload = buildIngestPayload(issue);
+
+    try {
+      const res = await fetch(INGEST_CONFIG.API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const result = await res.json();
+      showIngestStatus(`✓ ${issue.id} → ${result.issue_code}${result.merged_into_existing ? ' (merged)' : ' (new)'}`, false);
+    } catch (err) {
+      // Backend not running / unreachable — don't break the demo, the feed
+      // still plays fine as a pure video experience without it.
+      console.warn('[MobiSense] Could not ingest detection to backend:', err);
+      showIngestStatus(`⚠ ${issue.id} not sent (backend unreachable)`, true);
+    }
+  }
+
+  // Small, self-contained status pill — created on first use so no HTML
+  // changes are required. Shows the last ingest result near the video
+  // source label.
+  let ingestStatusEl = null;
+  function showIngestStatus(text, isError) {
+    if (!ingestStatusEl) {
+      ingestStatusEl = document.createElement('div');
+      ingestStatusEl.id = 'ingest-status-pill';
+      ingestStatusEl.style.cssText = 'margin-top:6px;font-size:12px;font-family:inherit;transition:opacity .2s;';
+      if (DOM.videoSourceLabel && DOM.videoSourceLabel.parentElement) {
+        DOM.videoSourceLabel.parentElement.appendChild(ingestStatusEl);
+      }
+    }
+    ingestStatusEl.textContent = text;
+    ingestStatusEl.style.color = isError ? '#b91c1c' : '#15803d';
+    ingestStatusEl.style.opacity = '1';
+    clearTimeout(showIngestStatus._t);
+    showIngestStatus._t = setTimeout(() => {
+      if (ingestStatusEl) ingestStatusEl.style.opacity = '0.4';
+    }, 4000);
   }
 
   function getActiveDetectionForTime(currentTime) {

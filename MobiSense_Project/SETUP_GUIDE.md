@@ -67,18 +67,29 @@ You should see `8.0.x`.
 
 ## 2. Load the database
 
-From the `database/` folder, run the three files **in order** — each one
-depends on the last:
+From the `database/` folder, run the files **in order** — each one depends
+on the last:
 
 ```bash
 mysql -u root -p < 01_schema.sql
 mysql -u root -p < 02_procedures.sql
 mysql -u root -p < 03_views_and_seed.sql
+mysql -u root -p < 04_accident_alerts.sql      # optional: accident type + department alerts
+mysql -u root -p < 05_bangalore_seed.sql       # optional: repositions demo pins to Bangalore
+mysql -u root -p < 06_dedup_upgrade.sql        # dedup engine upgrade — run this LAST
 ```
+
+`06_dedup_upgrade.sql` widens the dedup radii for a moving reporting
+vehicle, adds a running centroid (`issues.centroid_lat/lng`), adds
+`vehicle_id`/`confidence` to the raw detection log, and makes severity
+merges never silently downgrade. It only ALTERs/REPLACEs existing objects,
+so run it after everything else — if you ever re-run `03` or `05` to
+reseed demo data, re-run `06` again afterwards too, since those seed files
+call the *old* 9-argument `sp_ingest_detection` signature.
 
 Check it worked:
 ```bash
-mysql -u root -p mobisense_db -e "SELECT id, type, lat, lng, detection_count, status FROM v_dashboard_issues ORDER BY id;"
+mysql -u root -p mobisense_db -e "SELECT id, type, lat, lng, centroid_lat, centroid_lng, detection_count, status FROM v_dashboard_issues ORDER BY id;"
 ```
 
 You should see 12 rows — including one `heavy_traffic` row with

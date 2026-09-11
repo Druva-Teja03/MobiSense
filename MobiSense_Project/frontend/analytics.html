@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MobiSense — Analytics | Smart India Hackathon</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="shell.css">
+  <link rel="stylesheet" href="command-center.css">
+  <link rel="stylesheet" href="analytics.css">
+</head>
+<body>
+
+  <div class="app-shell" id="app-shell">
+
+    <nav class="app-nav">
+      <div class="app-nav-brand">
+        <img src="logo.jpeg" alt="MobiSense Logo">
+        <div class="app-nav-brand-text"><strong>MobiSense</strong><span>Urban Intelligence</span></div>
+      </div>
+      <div class="app-nav-links">
+        <span class="app-nav-section-label">Overview</span>
+        <a href="command-center.html" class="app-nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+          <span class="app-nav-link-label">Command Center</span>
+        </a>
+        <span class="app-nav-section-label">Intelligence</span>
+        <a href="dashboard.html" class="app-nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span class="app-nav-link-label">Live City Map</span>
+        </a>
+        <a href="feed.html" class="app-nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+          <span class="app-nav-link-label">AI Detection Feed</span>
+        </a>
+        <a href="incidents.html" class="app-nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          <span class="app-nav-link-label">Incidents</span>
+        </a>
+        <span class="app-nav-section-label">Operations</span>
+        <a href="fleet.html" class="app-nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="7" width="15" height="11" rx="1.5"/><path d="M16 10h3.5a1.5 1.5 0 0 1 1.3.76L23 15v3h-2"/><circle cx="6" cy="18.5" r="1.6"/><circle cx="17.5" cy="18.5" r="1.6"/></svg>
+          <span class="app-nav-link-label">Fleet Intelligence</span>
+        </a>
+        <a href="analytics.html" class="app-nav-link is-active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          <span class="app-nav-link-label">Analytics</span>
+        </a>
+      </div>
+      <div class="app-nav-footer">
+        <button class="app-nav-collapse-btn" id="nav-collapse-btn" title="Collapse sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+          <span>Collapse</span>
+        </button>
+      </div>
+    </nav>
+
+    <div class="app-content">
+      <div class="cc-page">
+
+        <header class="cc-header">
+          <div>
+            <h1>Analytics</h1>
+            <p>Why spatial aggregation matters — how many raw AI observations became how few real incidents.</p>
+          </div>
+        </header>
+
+        <!-- Headline dedup metric -->
+        <section class="cc-card an-reduction-card">
+          <div class="an-reduction-row">
+            <div class="an-reduction-block">
+              <span class="an-reduction-value" id="an-raw">—</span>
+              <span class="an-reduction-label">Raw AI Observations</span>
+            </div>
+            <span class="an-reduction-arrow">→</span>
+            <div class="an-reduction-block">
+              <span class="an-reduction-value" id="an-unique">—</span>
+              <span class="an-reduction-label">Unique Urban Incidents</span>
+            </div>
+            <span class="an-reduction-arrow">→</span>
+            <div class="an-reduction-block an-reduction-highlight">
+              <span class="an-reduction-value" id="an-pct">—</span>
+              <span class="an-reduction-label">Data Reduction</span>
+            </div>
+          </div>
+          <p class="an-reduction-note"><span id="an-consolidated">—</span> duplicate observations were spatially consolidated instead of becoming separate issues.</p>
+        </section>
+
+        <div class="cc-grid-row">
+          <section class="cc-card">
+            <div class="cc-card-header"><span class="cc-card-title">Incident Distribution by Category</span></div>
+            <div class="an-bars" id="an-category-bars"><p class="cc-empty">Loading…</p></div>
+          </section>
+
+          <section class="cc-card">
+            <div class="cc-card-header"><span class="cc-card-title">Severity Distribution</span></div>
+            <div class="an-bars" id="an-severity-bars"><p class="cc-empty">Loading…</p></div>
+          </section>
+        </div>
+
+        <section class="cc-card">
+          <div class="cc-card-header"><span class="cc-card-title">Resolved vs. Unresolved</span></div>
+          <div class="an-status-bar-wrap">
+            <div class="an-status-bar" id="an-status-bar"></div>
+            <div class="an-status-legend" id="an-status-legend"></div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="shell.js"></script>
+  <script src="analytics.js"></script>
+</body>
+</html>

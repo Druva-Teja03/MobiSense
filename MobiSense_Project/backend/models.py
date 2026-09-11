@@ -29,3 +29,5 @@ class DetectionIngestRequest(BaseModel):
     item_count: Optional[int] = None
     severity: Optional[str] = None
     source_image: Optional[str] = None
+    vehicle_id: Optional[str] = None  # which reporting vehicle/camera sent this (multi-source confirmation)
+    confidence: Optional[float] = Field(default=None, ge=0, le=1)  # AI model confidence, 0-1
