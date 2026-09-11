@@ -12,17 +12,56 @@ Endpoints:
   GET  /analytics/hotspots Locations where an issue type has recurred 2+ times (auth required)
 """
 from datetime import datetime
+import logging
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from auth import get_current_user, login_user, signup_user
 from database import get_cursor
 from models import DetectionIngestRequest, LoginRequest, SignupRequest, StatusUpdateRequest
 from notify import notify_departments_for_issue
 
+logger = logging.getLogger("mobisense")
+
 app = FastAPI(title="MobiSense API")
 
+
+class _CrashSafeMiddleware(BaseHTTPMiddleware):
+    """
+    Bug fix (Sep 2026): a genuinely unhandled exception — e.g. a MySQL
+    error because a migration (07_feature_upgrade.sql) hasn't been
+    applied yet — bypasses CORSMiddleware entirely. Starlette's request
+    flow here is ServerErrorMiddleware -> CORSMiddleware -> this
+    middleware -> ExceptionMiddleware -> the route. A raised
+    HTTPException is caught by ExceptionMiddleware (innermost) and its
+    response passes back out through CORS fine — that already worked.
+    But a *raw* Python/DB exception isn't an HTTPException, so nothing
+    inner catches it; it propagates all the way out to
+    ServerErrorMiddleware, which sits OUTSIDE CORSMiddleware and builds
+    its 500 response with no CORS header. The browser then reports a
+    misleading "No Access-Control-Allow-Origin header" instead of the
+    real error.
+    This middleware catches it one layer *inside* CORS instead, so the
+    resulting response still passes through CORSMiddleware on its way
+    out. It must be registered BEFORE `app.add_middleware(CORSMiddleware, ...)`
+    below — Starlette stacks middleware so the one added first ends up
+    innermost, closer to the route, which is what we need here.
+    """
+    async def dispatch(self, request, call_next):
+        try:
+            return await call_next(request)
+        except Exception as exc:  # noqa: BLE001 - intentionally broad, this is the safety net
+            logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"{type(exc).__name__}: {exc}"},
+            )
+
+
+app.add_middleware(_CrashSafeMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # tighten this to your actual frontend origin before deploying
@@ -192,8 +231,15 @@ def get_recurring_hotspots(user: dict = Depends(get_current_user)):
         cur.execute("SELECT * FROM v_recurring_hotspots")
         rows = cur.fetchall()
     for r in rows:
-        r["avg_lat"] = float(r["avg_lat"])
-        r["avg_lng"] = float(r["avg_lng"])
+        # Bug fix (Sep 2026): rows seeded before centroid_lat/centroid_lng
+        # existed (03_views_and_seed.sql / 05_bangalore_seed.sql) never got
+        # backfilled, so AVG(i.centroid_lat) can legitimately be NULL for
+        # them. /issues already guards this the same way — this endpoint
+        # just hadn't been updated to match when the columns were added.
+        if r.get("avg_lat") is not None:
+            r["avg_lat"] = float(r["avg_lat"])
+        if r.get("avg_lng") is not None:
+            r["avg_lng"] = float(r["avg_lng"])
         if r.get("first_seen_at"):
             r["first_seen_at"] = r["first_seen_at"].strftime("%Y-%m-%dT%H:%M:%SZ")
         if r.get("last_seen_at"):

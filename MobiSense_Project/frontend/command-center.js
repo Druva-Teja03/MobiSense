@@ -332,10 +332,13 @@
       zoomControl: false,
       attributionControl: false,
     }).setView(CONFIG.DEFAULT_CENTER, CONFIG.DEFAULT_ZOOM);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "&copy; OpenStreetMap contributors",
-    }).addTo(state.map);
+    L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+      {
+        maxZoom: 19,
+        attribution: "Tiles &copy; Esri",
+      },
+    ).addTo(state.map);
   }
 
   document.addEventListener("DOMContentLoaded", () => {

@@ -5,20 +5,22 @@
  */
 
 (function () {
-  'use strict';
+  "use strict";
 
   // --- Auth guard: no token, no dashboard. ------------------------
-  const AUTH_TOKEN = localStorage.getItem('mobisense_token');
+  const AUTH_TOKEN = localStorage.getItem("mobisense_token");
   if (!AUTH_TOKEN) {
-    window.location.href = 'login.html';
+    window.location.href = "login.html";
     return;
   }
-  const CURRENT_USER = JSON.parse(localStorage.getItem('mobisense_user') || '{}');
+  const CURRENT_USER = JSON.parse(
+    localStorage.getItem("mobisense_user") || "{}",
+  );
 
   function logout() {
-    localStorage.removeItem('mobisense_token');
-    localStorage.removeItem('mobisense_user');
-    window.location.href = 'login.html';
+    localStorage.removeItem("mobisense_token");
+    localStorage.removeItem("mobisense_user");
+    window.location.href = "login.html";
   }
   window.MobiSense = window.MobiSense || {};
   window.MobiSense.logout = logout;
@@ -26,22 +28,22 @@
   // --- Configuration ---
   const CONFIG = {
     // Point this at your local FastAPI backend (see backend/main.py).
-    API_URL: 'http://localhost:8000/issues',
+    API_URL: "http://localhost:8000/issues",
     HEADERS: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${AUTH_TOKEN}`
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${AUTH_TOKEN}`,
     },
     AUTO_REFRESH_INTERVAL_MS: 30000,
     DEFAULT_CENTER: [12.9716, 77.5946], // Bengaluru (Bangalore), Karnataka coordinates
-    DEFAULT_ZOOM: 12
+    DEFAULT_ZOOM: 12,
   };
 
   // --- State ---
   const state = {
     issues: [],
-    filterStatus: 'all', // 'all' | 'unresolved' | 'resolved'
-    filterType: 'all',   // 'all' | 'pothole' | 'heavy_traffic' | 'garbage'
-    searchQuery: '',
+    filterStatus: "all", // 'all' | 'unresolved' | 'resolved'
+    filterType: "all", // 'all' | 'pothole' | 'heavy_traffic' | 'garbage'
+    searchQuery: "",
     selectedIssueId: null,
     isFetching: false,
     map: null,
@@ -49,7 +51,7 @@
     heatLayer: null,
     heatmapOn: false,
     autoRefreshTimer: null,
-    lastUpdated: null
+    lastUpdated: null,
   };
 
   // Severity -> heat weight (0-1). Unknown/low severities still show up
@@ -57,16 +59,22 @@
   // (accidents, heavy traffic, high-severity garbage/potholes) dominate
   // the gradient the way a real triage view should.
   const SEVERITY_WEIGHT = {
-    critical: 1.0, severe: 1.0, major: 1.0,
-    high: 0.85, heavy: 0.85,
-    moderate: 0.55, medium: 0.55,
-    low: 0.3
+    critical: 1.0,
+    severe: 1.0,
+    major: 1.0,
+    high: 0.85,
+    heavy: 0.85,
+    moderate: 0.55,
+    medium: 0.55,
+    low: 0.3,
   };
 
   function heatWeightOf(issue) {
-    const typeKey = (issue.type || '').toLowerCase();
-    if (typeKey.includes('accident')) return 1.0; // accidents always weigh max regardless of severity field
-    const sev = String(issue.severity || issue.traffic_level || '').toLowerCase();
+    const typeKey = (issue.type || "").toLowerCase();
+    if (typeKey.includes("accident")) return 1.0; // accidents always weigh max regardless of severity field
+    const sev = String(
+      issue.severity || issue.traffic_level || "",
+    ).toLowerCase();
     return SEVERITY_WEIGHT[sev] !== undefined ? SEVERITY_WEIGHT[sev] : 0.4;
   }
 
@@ -79,46 +87,48 @@
     accident: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>`,
     default: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
     check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
-    spinner: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`
+    spinner: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`,
   };
 
   // --- DOM Elements Cache ---
   const DOM = {
-    headerLiveSummary: document.getElementById('header-live-summary'),
-    syncTimeLabel: document.getElementById('sync-time-label'),
-    refreshBtn: document.getElementById('refresh-btn'),
-    feedContainer: document.getElementById('incident-feed'),
-    feedCountLabel: document.getElementById('feed-count-label'),
-    tabBtns: document.querySelectorAll('.tab-btn'),
-    typeBoxes: document.querySelectorAll('.stats-type-box'),
-    resolutionRatePill: document.getElementById('resolution-rate-pill'),
-    countPotholes: document.getElementById('count-potholes'),
-    countTraffic: document.getElementById('count-traffic'),
-    countGarbage: document.getElementById('count-garbage'),
-    countAccidents: document.getElementById('count-accidents'),
-    searchInput: document.getElementById('search-input'),
-    clearSearchBtn: document.getElementById('clear-search-btn'),
-    toastContainer: document.getElementById('toast-container'),
-    fitBoundsBtn: document.getElementById('fit-bounds-btn'),
-    heatmapToggleBtn: document.getElementById('heatmap-toggle-btn'),
-    mapCenterCoords: document.getElementById('map-center-coords'),
-    logoutBtn: document.getElementById('logout-btn'),
-    profileMenuWrapper: document.getElementById('profile-menu-wrapper'),
-    profileAvatarBtn: document.getElementById('profile-avatar-btn'),
-    profileAvatarInitial: document.getElementById('profile-avatar-initial'),
-    profileAvatarInitialLg: document.getElementById('profile-avatar-initial-lg'),
-    profileDropdown: document.getElementById('profile-dropdown'),
-    profileName: document.getElementById('profile-name'),
-    profileRole: document.getElementById('profile-role'),
-    profileEmail: document.getElementById('profile-email'),
-    profileJobTitle: document.getElementById('profile-job-title'),
-    profileGovtId: document.getElementById('profile-govt-id'),
-    profileJoined: document.getElementById('profile-joined')
+    headerLiveSummary: document.getElementById("header-live-summary"),
+    syncTimeLabel: document.getElementById("sync-time-label"),
+    refreshBtn: document.getElementById("refresh-btn"),
+    feedContainer: document.getElementById("incident-feed"),
+    feedCountLabel: document.getElementById("feed-count-label"),
+    tabBtns: document.querySelectorAll(".tab-btn"),
+    typeBoxes: document.querySelectorAll(".stats-type-box"),
+    resolutionRatePill: document.getElementById("resolution-rate-pill"),
+    countPotholes: document.getElementById("count-potholes"),
+    countTraffic: document.getElementById("count-traffic"),
+    countGarbage: document.getElementById("count-garbage"),
+    countAccidents: document.getElementById("count-accidents"),
+    searchInput: document.getElementById("search-input"),
+    clearSearchBtn: document.getElementById("clear-search-btn"),
+    toastContainer: document.getElementById("toast-container"),
+    fitBoundsBtn: document.getElementById("fit-bounds-btn"),
+    heatmapToggleBtn: document.getElementById("heatmap-toggle-btn"),
+    mapCenterCoords: document.getElementById("map-center-coords"),
+    logoutBtn: document.getElementById("logout-btn"),
+    profileMenuWrapper: document.getElementById("profile-menu-wrapper"),
+    profileAvatarBtn: document.getElementById("profile-avatar-btn"),
+    profileAvatarInitial: document.getElementById("profile-avatar-initial"),
+    profileAvatarInitialLg: document.getElementById(
+      "profile-avatar-initial-lg",
+    ),
+    profileDropdown: document.getElementById("profile-dropdown"),
+    profileName: document.getElementById("profile-name"),
+    profileRole: document.getElementById("profile-role"),
+    profileEmail: document.getElementById("profile-email"),
+    profileJobTitle: document.getElementById("profile-job-title"),
+    profileGovtId: document.getElementById("profile-govt-id"),
+    profileJoined: document.getElementById("profile-joined"),
   };
 
   // --- Profile avatar + dropdown ---
   function getInitial(name) {
-    return (name || '?').trim().charAt(0).toUpperCase() || '?';
+    return (name || "?").trim().charAt(0).toUpperCase() || "?";
   }
 
   function toggleProfileDropdown(forceOpen) {
@@ -126,37 +136,53 @@
     const isOpen = !DOM.profileDropdown.hidden;
     const nextOpen = forceOpen !== undefined ? forceOpen : !isOpen;
     DOM.profileDropdown.hidden = !nextOpen;
-    DOM.profileAvatarBtn.setAttribute('aria-expanded', String(nextOpen));
+    DOM.profileAvatarBtn.setAttribute("aria-expanded", String(nextOpen));
   }
 
   async function loadProfile() {
     // Show what we already know instantly (from login/signup response),
     // then fill in the rest once /users/me responds.
     const initial = getInitial(CURRENT_USER.full_name);
-    if (DOM.profileAvatarInitial) DOM.profileAvatarInitial.textContent = initial;
-    if (DOM.profileAvatarInitialLg) DOM.profileAvatarInitialLg.textContent = initial;
-    if (DOM.profileName) DOM.profileName.textContent = CURRENT_USER.full_name || 'Account';
-    if (DOM.profileRole) DOM.profileRole.textContent = CURRENT_USER.role || '—';
+    if (DOM.profileAvatarInitial)
+      DOM.profileAvatarInitial.textContent = initial;
+    if (DOM.profileAvatarInitialLg)
+      DOM.profileAvatarInitialLg.textContent = initial;
+    if (DOM.profileName)
+      DOM.profileName.textContent = CURRENT_USER.full_name || "Account";
+    if (DOM.profileRole) DOM.profileRole.textContent = CURRENT_USER.role || "—";
 
     try {
-      const res = await fetch(`${CONFIG.API_URL.replace('/issues', '')}/users/me`, {
-        headers: CONFIG.HEADERS
-      });
-      if (res.status === 401) { logout(); return; }
+      const res = await fetch(
+        `${CONFIG.API_URL.replace("/issues", "")}/users/me`,
+        {
+          headers: CONFIG.HEADERS,
+        },
+      );
+      if (res.status === 401) {
+        logout();
+        return;
+      }
       if (!res.ok) return;
       const profile = await res.json();
 
-      if (DOM.profileName) DOM.profileName.textContent = profile.full_name || '—';
-      if (DOM.profileRole) DOM.profileRole.textContent = profile.role || '—';
-      if (DOM.profileEmail) DOM.profileEmail.textContent = profile.email || '—';
-      if (DOM.profileJobTitle) DOM.profileJobTitle.textContent = profile.job_title || '—';
-      if (DOM.profileGovtId) DOM.profileGovtId.textContent = profile.govt_id_number || '—';
+      if (DOM.profileName)
+        DOM.profileName.textContent = profile.full_name || "—";
+      if (DOM.profileRole) DOM.profileRole.textContent = profile.role || "—";
+      if (DOM.profileEmail) DOM.profileEmail.textContent = profile.email || "—";
+      if (DOM.profileJobTitle)
+        DOM.profileJobTitle.textContent = profile.job_title || "—";
+      if (DOM.profileGovtId)
+        DOM.profileGovtId.textContent = profile.govt_id_number || "—";
       if (DOM.profileJoined && profile.created_at) {
-        DOM.profileJoined.textContent = new Date(profile.created_at).toLocaleDateString();
+        DOM.profileJoined.textContent = new Date(
+          profile.created_at,
+        ).toLocaleDateString();
       }
       const initialFromServer = getInitial(profile.full_name);
-      if (DOM.profileAvatarInitial) DOM.profileAvatarInitial.textContent = initialFromServer;
-      if (DOM.profileAvatarInitialLg) DOM.profileAvatarInitialLg.textContent = initialFromServer;
+      if (DOM.profileAvatarInitial)
+        DOM.profileAvatarInitial.textContent = initialFromServer;
+      if (DOM.profileAvatarInitialLg)
+        DOM.profileAvatarInitialLg.textContent = initialFromServer;
     } catch (err) {
       // Silent fail is fine here — the header still shows what we had
       // from login, just without the extra fields.
@@ -164,21 +190,24 @@
   }
 
   // --- Initialization ---
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener("DOMContentLoaded", () => {
     loadProfile();
     if (DOM.profileAvatarBtn) {
-      DOM.profileAvatarBtn.addEventListener('click', (e) => {
+      DOM.profileAvatarBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         toggleProfileDropdown();
       });
     }
-    document.addEventListener('click', (e) => {
-      if (DOM.profileMenuWrapper && !DOM.profileMenuWrapper.contains(e.target)) {
+    document.addEventListener("click", (e) => {
+      if (
+        DOM.profileMenuWrapper &&
+        !DOM.profileMenuWrapper.contains(e.target)
+      ) {
         toggleProfileDropdown(false);
       }
     });
     if (DOM.logoutBtn) {
-      DOM.logoutBtn.addEventListener('click', logout);
+      DOM.logoutBtn.addEventListener("click", logout);
     }
     initMap();
     bindEvents();
@@ -190,11 +219,11 @@
   // Map Initialization & Management (Leaflet GIS)
   // ==========================================================================
   function initMap() {
-    const mapEl = document.getElementById('map-container');
+    const mapEl = document.getElementById("map-container");
     if (!mapEl) return;
 
-    if (typeof L === 'undefined') {
-      console.warn('Leaflet not loaded. Rendering vector fallback map.');
+    if (typeof L === "undefined") {
+      console.warn("Leaflet not loaded. Rendering vector fallback map.");
       mapEl.innerHTML = `
         <div style="height: 100%; display: flex; align-items: center; justify-content: center; background: #e2e8f0; color: #475569; font-weight: 500;">
           GIS Map Viewport Active · Telemetry synced with live coordinates
@@ -204,24 +233,27 @@
     }
 
     // Initialize Map with clean civic style
-    state.map = L.map('map-container', {
+    state.map = L.map("map-container", {
       center: CONFIG.DEFAULT_CENTER,
       zoom: CONFIG.DEFAULT_ZOOM,
       zoomControl: true,
-      attributionControl: false
+      attributionControl: false,
     });
 
     // OpenStreetMap tile layer (100% free, zero API key required)
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(state.map);
+    L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+      {
+        maxZoom: 19,
+        attribution: "Tiles &copy; Esri",
+      },
+    ).addTo(state.map);
 
     // Layer group for dynamic markers
     state.markersLayer = L.layerGroup().addTo(state.map);
 
     // Coordinate display listener
-    state.map.on('move', () => {
+    state.map.on("move", () => {
       const center = state.map.getCenter();
       if (DOM.mapCenterCoords) {
         DOM.mapCenterCoords.textContent = `${center.lat.toFixed(4)}°N, ${center.lng.toFixed(4)}°E`;
@@ -239,7 +271,7 @@
 
     const filtered = getFilteredIssues();
 
-    filtered.forEach(issue => {
+    filtered.forEach((issue) => {
       // Prefer the running centroid (v_dashboard_issues.centroid_lat/lng) so
       // an issue merged from several slightly-offset GPS fixes plots as ONE
       // marker at its average position, not frozen at the first detection.
@@ -248,49 +280,54 @@
 
       if (isNaN(lat) || isNaN(lng)) return;
 
-      const isResolved = issue.status && issue.status.toLowerCase() === 'resolved';
+      const isResolved =
+        issue.status && issue.status.toLowerCase() === "resolved";
       const isSelected = state.selectedIssueId === issue.id;
 
       // Determine icon & styling
-      const typeKey = (issue.type || '').toLowerCase();
+      const typeKey = (issue.type || "").toLowerCase();
       let iconSvg = ICONS.pothole;
-      let pinTypeClass = 'type-pothole';
-      if (typeKey.includes('accident')) {
+      let pinTypeClass = "type-pothole";
+      if (typeKey.includes("accident")) {
         iconSvg = ICONS.accident;
-        pinTypeClass = 'type-accident';
-      } else if (typeKey.includes('park')) {
+        pinTypeClass = "type-accident";
+      } else if (typeKey.includes("park")) {
         iconSvg = ICONS.parking;
-        pinTypeClass = 'type-parking';
-      } else if (typeKey.includes('garb') || typeKey.includes('trash') || typeKey.includes('waste')) {
+        pinTypeClass = "type-parking";
+      } else if (
+        typeKey.includes("garb") ||
+        typeKey.includes("trash") ||
+        typeKey.includes("waste")
+      ) {
         iconSvg = ICONS.garbage;
-        pinTypeClass = 'type-garbage';
-      } else if (typeKey.includes('traffic')) {
+        pinTypeClass = "type-garbage";
+      } else if (typeKey.includes("traffic")) {
         iconSvg = ICONS.traffic;
-        pinTypeClass = 'type-traffic';
+        pinTypeClass = "type-traffic";
       }
       if (isResolved) iconSvg = ICONS.check;
 
       const iconHtml = `
-        <div class="custom-map-pin ${isResolved ? 'resolved' : 'unresolved'} ${pinTypeClass} ${isSelected ? 'is-active' : ''} ${(!isResolved && pinTypeClass === 'type-accident') ? 'pin-critical-pulse' : ''}" data-id="${issue.id}">
+        <div class="custom-map-pin ${isResolved ? "resolved" : "unresolved"} ${pinTypeClass} ${isSelected ? "is-active" : ""} ${!isResolved && pinTypeClass === "type-accident" ? "pin-critical-pulse" : ""}" data-id="${issue.id}">
           ${iconSvg}
         </div>
       `;
 
       const customIcon = L.divIcon({
-        className: 'custom-div-icon',
+        className: "custom-div-icon",
         html: iconHtml,
         iconSize: [30, 30],
-        iconAnchor: [15, 15]
+        iconAnchor: [15, 15],
       });
 
       const marker = L.marker([lat, lng], { icon: customIcon });
 
       // Popup Content
-      let telemetryPopupHtml = '';
+      let telemetryPopupHtml = "";
       if (issue.vehicle_count !== undefined || issue.traffic_level) {
         telemetryPopupHtml = `
           <div style="font-size: 11px; color: #1d4ed8; font-weight: 600; margin-bottom: 6px; background: #eff6ff; padding: 2px 6px; border-radius: 4px; border: 1px solid #dbeafe;">
-            ${issue.vehicle_count !== undefined ? `${issue.vehicle_count} vehicles` : ''}${issue.vehicle_count !== undefined && issue.traffic_level ? ' · ' : ''}${escapeHtml(issue.traffic_level || '')}
+            ${issue.vehicle_count !== undefined ? `${issue.vehicle_count} vehicles` : ""}${issue.vehicle_count !== undefined && issue.traffic_level ? " · " : ""}${escapeHtml(issue.traffic_level || "")}
           </div>
         `;
       } else if (issue.item_count !== undefined || issue.severity) {
@@ -305,7 +342,7 @@
         <div style="font-family: 'Inter', sans-serif;">
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px;">
             <strong style="text-transform: capitalize; color: #1f2937; font-size: 13px;">${escapeHtml(formatIssueType(issue.type))}</strong>
-            <span style="font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 9999px; background: ${isResolved ? '#dcfce7' : '#fef3c7'}; color: ${isResolved ? '#15803d' : '#b45309'};">${isResolved ? 'Resolved' : 'Unresolved'}</span>
+            <span style="font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 9999px; background: ${isResolved ? "#dcfce7" : "#fef3c7"}; color: ${isResolved ? "#15803d" : "#b45309"};">${isResolved ? "Resolved" : "Unresolved"}</span>
           </div>
           ${telemetryPopupHtml}
           <div style="font-size: 11px; color: #64748b; margin-bottom: 4px;">
@@ -314,17 +351,21 @@
           <div style="font-size: 11px; color: #64748b; margin-bottom: 8px;">
             ${formatTime(issue.timestamp)}
           </div>
-          ${!isResolved ? `
+          ${
+            !isResolved
+              ? `
             <button onclick="window.MobiSense.resolveIssue('${issue.id}')" style="width: 100%; padding: 5px 8px; background: #3d5a4c; color: #fff; font-size: 11px; font-weight: 600; border-radius: 4px; border: none; cursor: pointer;">
               Mark as Resolved
             </button>
-          ` : ''}
+          `
+              : ""
+          }
         </div>
       `;
 
       marker.bindPopup(popupHtml);
 
-      marker.on('click', () => {
+      marker.on("click", () => {
         selectIssue(issue.id, false);
       });
 
@@ -344,13 +385,13 @@
   // Severity Heatmap Layer (toggle button, top-right map overlay)
   // ==========================================================================
   function updateHeatmap() {
-    if (!state.map || typeof L.heatLayer !== 'function') return;
+    if (!state.map || typeof L.heatLayer !== "function") return;
 
     // Heatmap always reflects UNRESOLVED issues only — a resolved pothole
     // shouldn't still glow red on a "where's the danger right now" view.
     const points = getFilteredIssues()
-      .filter(issue => (issue.status || '').toLowerCase() !== 'resolved')
-      .map(issue => {
+      .filter((issue) => (issue.status || "").toLowerCase() !== "resolved")
+      .map((issue) => {
         const lat = parseFloat(issue.centroid_lat ?? issue.lat);
         const lng = parseFloat(issue.centroid_lng ?? issue.lng);
         if (isNaN(lat) || isNaN(lng)) return null;
@@ -368,7 +409,12 @@
         radius: 32,
         blur: 24,
         maxZoom: 17,
-        gradient: { 0.3: '#22c55e', 0.55: '#f59e0b', 0.85: '#ef4444', 1.0: '#b91c1c' }
+        gradient: {
+          0.3: "#22c55e",
+          0.55: "#f59e0b",
+          0.85: "#ef4444",
+          1.0: "#b91c1c",
+        },
       }).addTo(state.map);
     }
   }
@@ -376,7 +422,7 @@
   function toggleHeatmap() {
     state.heatmapOn = !state.heatmapOn;
     if (DOM.heatmapToggleBtn) {
-      DOM.heatmapToggleBtn.classList.toggle('is-active', state.heatmapOn);
+      DOM.heatmapToggleBtn.classList.toggle("is-active", state.heatmapOn);
     }
     // Markers stay visible under the heat layer; only the heat overlay
     // itself toggles, so users can still click through to resolve issues.
@@ -391,13 +437,13 @@
     state.isFetching = true;
 
     if (DOM.refreshBtn) {
-      DOM.refreshBtn.classList.add('is-refreshing');
+      DOM.refreshBtn.classList.add("is-refreshing");
     }
 
     try {
       const response = await fetch(CONFIG.API_URL, {
-        method: 'GET',
-        headers: CONFIG.HEADERS
+        method: "GET",
+        headers: CONFIG.HEADERS,
       });
 
       if (response.status === 401) {
@@ -415,7 +461,7 @@
       } else if (data && Array.isArray(data.issues)) {
         state.issues = data.issues;
       } else {
-        console.warn('Unexpected API payload structure:', data);
+        console.warn("Unexpected API payload structure:", data);
       }
 
       state.lastUpdated = new Date();
@@ -426,16 +472,21 @@
       // here as dashboard.html?focus=<id> to jump straight to an incident.
       if (!state.hasAppliedFocusParam) {
         state.hasAppliedFocusParam = true;
-        const focusId = new URLSearchParams(window.location.search).get('focus');
+        const focusId = new URLSearchParams(window.location.search).get(
+          "focus",
+        );
         if (focusId) selectIssue(focusId, true);
       }
     } catch (error) {
-      console.error('Error fetching MobiSense issues:', error);
-      showToast('Could not sync with live API. Retaining current data.', 'error');
+      console.error("Error fetching MobiSense issues:", error);
+      showToast(
+        "Could not sync with live API. Retaining current data.",
+        "error",
+      );
     } finally {
       state.isFetching = false;
       if (DOM.refreshBtn) {
-        DOM.refreshBtn.classList.remove('is-refreshing');
+        DOM.refreshBtn.classList.remove("is-refreshing");
       }
     }
   }
@@ -444,18 +495,20 @@
     if (!issueId) return;
 
     // Find issue locally
-    const issue = state.issues.find(i => String(i.id) === String(issueId));
+    const issue = state.issues.find((i) => String(i.id) === String(issueId));
     if (!issue) return;
 
     // Optimistic UI state
     const originalStatus = issue.status;
-    issue.status = 'resolved';
+    issue.status = "resolved";
     renderDashboard();
 
     // Visual button loading state if rendered
-    const cardBtn = document.querySelector(`.btn-resolve[data-id="${issueId}"]`);
+    const cardBtn = document.querySelector(
+      `.btn-resolve[data-id="${issueId}"]`,
+    );
     if (cardBtn) {
-      cardBtn.classList.add('is-loading');
+      cardBtn.classList.add("is-loading");
       cardBtn.innerHTML = `${ICONS.spinner} Updating...`;
     }
 
@@ -463,23 +516,26 @@
       // Execute PATCH call to API endpoint
       const patchUrl = `${CONFIG.API_URL}/${issueId}`;
       const response = await fetch(patchUrl, {
-        method: 'PATCH',
+        method: "PATCH",
         headers: CONFIG.HEADERS,
-        body: JSON.stringify({ status: 'resolved' })
+        body: JSON.stringify({ status: "resolved" }),
       });
 
       if (!response.ok && response.status !== 404 && response.status !== 405) {
         // Try fallback query or alternate structure if needed
-        console.warn('PATCH request returned non-200 status:', response.status);
+        console.warn("PATCH request returned non-200 status:", response.status);
       }
 
-      showToast(`Incident #${issueId} marked as resolved`, 'success');
+      showToast(`Incident #${issueId} marked as resolved`, "success");
 
       // Refresh data from API to ensure full sync
       await fetchIssues();
     } catch (error) {
-      console.warn('Network issue during PATCH, keeping optimistic update:', error);
-      showToast(`Incident #${issueId} status updated locally`, 'success');
+      console.warn(
+        "Network issue during PATCH, keeping optimistic update:",
+        error,
+      );
+      showToast(`Incident #${issueId} status updated locally`, "success");
       renderDashboard();
     }
   }
@@ -488,36 +544,70 @@
   // Filtering & Data Selectors
   // ==========================================================================
   function getFilteredIssues() {
-    return state.issues.filter(issue => {
-      const isResolved = issue.status && issue.status.toLowerCase() === 'resolved';
+    return state.issues.filter((issue) => {
+      const isResolved =
+        issue.status && issue.status.toLowerCase() === "resolved";
 
       // Status filter
-      if (state.filterStatus === 'unresolved' && isResolved) return false;
-      if (state.filterStatus === 'resolved' && !isResolved) return false;
+      if (state.filterStatus === "unresolved" && isResolved) return false;
+      if (state.filterStatus === "resolved" && !isResolved) return false;
 
       // Type filter
-      if (state.filterType !== 'all') {
-        const typeStr = (issue.type || '').toLowerCase();
-        if (state.filterType === 'pothole' && !typeStr.includes('pothole')) return false;
-        if (state.filterType === 'illegal_parking' && !typeStr.includes('park')) return false;
-        if (state.filterType === 'garbage' && !typeStr.includes('garb') && !typeStr.includes('trash') && !typeStr.includes('waste')) return false;
-        if ((state.filterType === 'heavy_traffic' || state.filterType === 'traffic') && !typeStr.includes('traffic')) return false;
-        if (state.filterType === 'accident' && !typeStr.includes('accident')) return false;
+      if (state.filterType !== "all") {
+        const typeStr = (issue.type || "").toLowerCase();
+        if (state.filterType === "pothole" && !typeStr.includes("pothole"))
+          return false;
+        if (state.filterType === "illegal_parking" && !typeStr.includes("park"))
+          return false;
+        if (
+          state.filterType === "garbage" &&
+          !typeStr.includes("garb") &&
+          !typeStr.includes("trash") &&
+          !typeStr.includes("waste")
+        )
+          return false;
+        if (
+          (state.filterType === "heavy_traffic" ||
+            state.filterType === "traffic") &&
+          !typeStr.includes("traffic")
+        )
+          return false;
+        if (state.filterType === "accident" && !typeStr.includes("accident"))
+          return false;
       }
 
       // Search Query filter (matches type, id, lat, lng, vehicle_count, traffic_level, item_count, severity)
       if (state.searchQuery.trim()) {
         const query = state.searchQuery.toLowerCase().trim();
-        const matchesType = (issue.type || '').toLowerCase().includes(query);
-        const matchesId = String(issue.id || '').toLowerCase().includes(query);
-        const matchesLat = String(issue.lat || '').includes(query);
-        const matchesLng = String(issue.lng || '').includes(query);
-        const matchesVehicles = issue.vehicle_count !== undefined && String(issue.vehicle_count).includes(query);
-        const matchesTrafficLevel = issue.traffic_level && String(issue.traffic_level).toLowerCase().includes(query);
-        const matchesItemCount = issue.item_count !== undefined && String(issue.item_count).includes(query);
-        const matchesSeverity = issue.severity && String(issue.severity).toLowerCase().includes(query);
+        const matchesType = (issue.type || "").toLowerCase().includes(query);
+        const matchesId = String(issue.id || "")
+          .toLowerCase()
+          .includes(query);
+        const matchesLat = String(issue.lat || "").includes(query);
+        const matchesLng = String(issue.lng || "").includes(query);
+        const matchesVehicles =
+          issue.vehicle_count !== undefined &&
+          String(issue.vehicle_count).includes(query);
+        const matchesTrafficLevel =
+          issue.traffic_level &&
+          String(issue.traffic_level).toLowerCase().includes(query);
+        const matchesItemCount =
+          issue.item_count !== undefined &&
+          String(issue.item_count).includes(query);
+        const matchesSeverity =
+          issue.severity &&
+          String(issue.severity).toLowerCase().includes(query);
 
-        if (!matchesType && !matchesId && !matchesLat && !matchesLng && !matchesVehicles && !matchesTrafficLevel && !matchesItemCount && !matchesSeverity) {
+        if (
+          !matchesType &&
+          !matchesId &&
+          !matchesLat &&
+          !matchesLng &&
+          !matchesVehicles &&
+          !matchesTrafficLevel &&
+          !matchesItemCount &&
+          !matchesSeverity
+        ) {
           return false;
         }
       }
@@ -538,7 +628,9 @@
   // Render Stats & Summary Bar
   function renderStats() {
     const total = state.issues.length;
-    const resolved = state.issues.filter(i => (i.status || '').toLowerCase() === 'resolved').length;
+    const resolved = state.issues.filter(
+      (i) => (i.status || "").toLowerCase() === "resolved",
+    ).length;
     const unresolved = total - resolved;
 
     // Header summary badge
@@ -555,9 +647,9 @@
     }
 
     // Tab badges
-    const tabAllBadge = document.getElementById('badge-tab-all');
-    const tabUnresolvedBadge = document.getElementById('badge-tab-unresolved');
-    const tabResolvedBadge = document.getElementById('badge-tab-resolved');
+    const tabAllBadge = document.getElementById("badge-tab-all");
+    const tabUnresolvedBadge = document.getElementById("badge-tab-unresolved");
+    const tabResolvedBadge = document.getElementById("badge-tab-resolved");
 
     if (tabAllBadge) tabAllBadge.textContent = total;
     if (tabUnresolvedBadge) tabUnresolvedBadge.textContent = unresolved;
@@ -569,12 +661,13 @@
     let garbage = 0;
     let accidents = 0;
 
-    state.issues.forEach(i => {
-      const t = (i.type || '').toLowerCase();
-      if (t.includes('accident')) accidents++;
-      else if (t.includes('pothole')) potholes++;
-      else if (t.includes('traffic')) traffic++;
-      else if (t.includes('garb') || t.includes('trash') || t.includes('waste')) garbage++;
+    state.issues.forEach((i) => {
+      const t = (i.type || "").toLowerCase();
+      if (t.includes("accident")) accidents++;
+      else if (t.includes("pothole")) potholes++;
+      else if (t.includes("traffic")) traffic++;
+      else if (t.includes("garb") || t.includes("trash") || t.includes("waste"))
+        garbage++;
     });
 
     if (DOM.countPotholes) DOM.countPotholes.textContent = potholes;
@@ -610,26 +703,30 @@
       return;
     }
 
-    let html = '';
+    let html = "";
 
-    filtered.forEach(issue => {
-      const isResolved = (issue.status || '').toLowerCase() === 'resolved';
+    filtered.forEach((issue) => {
+      const isResolved = (issue.status || "").toLowerCase() === "resolved";
       const isSelected = state.selectedIssueId === issue.id;
-      const typeKey = (issue.type || 'pothole').toLowerCase();
+      const typeKey = (issue.type || "pothole").toLowerCase();
 
-      let typeClass = 'type-pothole';
+      let typeClass = "type-pothole";
       let typeIcon = ICONS.pothole;
-      if (typeKey.includes('accident')) {
-        typeClass = 'type-accident';
+      if (typeKey.includes("accident")) {
+        typeClass = "type-accident";
         typeIcon = ICONS.accident;
-      } else if (typeKey.includes('park')) {
-        typeClass = 'type-illegal_parking';
+      } else if (typeKey.includes("park")) {
+        typeClass = "type-illegal_parking";
         typeIcon = ICONS.parking;
-      } else if (typeKey.includes('garb') || typeKey.includes('trash') || typeKey.includes('waste')) {
-        typeClass = 'type-garbage';
+      } else if (
+        typeKey.includes("garb") ||
+        typeKey.includes("trash") ||
+        typeKey.includes("waste")
+      ) {
+        typeClass = "type-garbage";
         typeIcon = ICONS.garbage;
-      } else if (typeKey.includes('traffic')) {
-        typeClass = 'type-heavy_traffic';
+      } else if (typeKey.includes("traffic")) {
+        typeClass = "type-heavy_traffic";
         typeIcon = ICONS.traffic;
       }
 
@@ -639,7 +736,7 @@
       const coordsText = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 
       html += `
-        <div class="issue-card ${isResolved ? 'is-resolved' : ''} ${isSelected ? 'is-selected' : ''}" 
+        <div class="issue-card ${isResolved ? "is-resolved" : ""} ${isSelected ? "is-selected" : ""}" 
              data-id="${issue.id}" 
              id="card-${issue.id}">
           
@@ -649,28 +746,34 @@
                 ${typeIcon}
                 ${escapeHtml(formattedType)}
               </span>
-              <span class="issue-id-label">#${escapeHtml(issue.id || 'N/A')}</span>
+              <span class="issue-id-label">#${escapeHtml(issue.id || "N/A")}</span>
             </div>
             
-            <span class="status-badge ${isResolved ? 'resolved' : 'unresolved'}">
-              ${isResolved ? 'Resolved' : 'Unresolved'}
+            <span class="status-badge ${isResolved ? "resolved" : "unresolved"}">
+              ${isResolved ? "Resolved" : "Unresolved"}
             </span>
           </div>
 
           <div class="card-details-grid">
-            ${(issue.vehicle_count !== undefined || issue.traffic_level) ? `
+            ${
+              issue.vehicle_count !== undefined || issue.traffic_level
+                ? `
               <div class="card-detail-item">
                 <div class="detail-label-wrap">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 11 2 11.5 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
                   <span>Telemetry</span>
                 </div>
                 <span class="traffic-metric-badge">
-                  ${issue.vehicle_count !== undefined ? `${issue.vehicle_count} vehicles detected` : ''}${issue.vehicle_count !== undefined && issue.traffic_level ? ' · ' : ''}${issue.traffic_level ? escapeHtml(issue.traffic_level) : ''}
+                  ${issue.vehicle_count !== undefined ? `${issue.vehicle_count} vehicles detected` : ""}${issue.vehicle_count !== undefined && issue.traffic_level ? " · " : ""}${issue.traffic_level ? escapeHtml(issue.traffic_level) : ""}
                 </span>
               </div>
-            ` : ''}
+            `
+                : ""
+            }
 
-            ${(issue.item_count !== undefined || issue.severity) ? `
+            ${
+              issue.item_count !== undefined || issue.severity
+                ? `
               <div class="card-detail-item">
                 <div class="detail-label-wrap">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
@@ -680,7 +783,9 @@
                   ${formatGarbageTelemetry(issue.item_count, issue.severity)}
                 </span>
               </div>
-            ` : ''}
+            `
+                : ""
+            }
 
             <div class="card-detail-item">
               <div class="detail-label-wrap">
@@ -700,7 +805,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 <span>Timestamp</span>
               </div>
-              <span class="detail-value time-val" title="${escapeHtml(issue.timestamp || '')}">
+              <span class="detail-value time-val" title="${escapeHtml(issue.timestamp || "")}">
                 ${formatRelativeTime(issue.timestamp)}
               </span>
             </div>
@@ -712,17 +817,21 @@
               View on Map
             </button>
 
-            ${!isResolved ? `
+            ${
+              !isResolved
+                ? `
               <button class="btn-resolve" data-id="${issue.id}" onclick="event.stopPropagation(); window.MobiSense.resolveIssue('${issue.id}')">
                 ${ICONS.check}
                 Mark as Resolved
               </button>
-            ` : `
+            `
+                : `
               <span class="resolved-indicator-tag">
                 ${ICONS.check}
                 Completed
               </span>
-            `}
+            `
+            }
           </div>
 
         </div>
@@ -732,9 +841,9 @@
     DOM.feedContainer.innerHTML = html;
 
     // Attach card click handlers for cross-highlighting
-    DOM.feedContainer.querySelectorAll('.issue-card').forEach(card => {
-      card.addEventListener('click', () => {
-        const id = card.getAttribute('data-id');
+    DOM.feedContainer.querySelectorAll(".issue-card").forEach((card) => {
+      card.addEventListener("click", () => {
+        const id = card.getAttribute("data-id");
         selectIssue(id, true);
       });
     });
@@ -747,17 +856,17 @@
     state.selectedIssueId = id;
 
     // Highlight card in feed
-    document.querySelectorAll('.issue-card').forEach(card => {
-      if (card.getAttribute('data-id') === String(id)) {
-        card.classList.add('is-selected');
-        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    document.querySelectorAll(".issue-card").forEach((card) => {
+      if (card.getAttribute("data-id") === String(id)) {
+        card.classList.add("is-selected");
+        card.scrollIntoView({ behavior: "smooth", block: "nearest" });
       } else {
-        card.classList.remove('is-selected');
+        card.classList.remove("is-selected");
       }
     });
 
     // Highlight map marker & center
-    const issue = state.issues.find(i => String(i.id) === String(id));
+    const issue = state.issues.find((i) => String(i.id) === String(id));
     if (issue && state.map && zoomMap) {
       const lat = parseFloat(issue.lat);
       const lng = parseFloat(issue.lng);
@@ -782,7 +891,7 @@
     const bounds = L.latLngBounds();
     let hasPoints = false;
 
-    filtered.forEach(i => {
+    filtered.forEach((i) => {
       const lat = parseFloat(i.lat);
       const lng = parseFloat(i.lng);
       if (!isNaN(lat) && !isNaN(lng)) {
@@ -800,24 +909,27 @@
 
   function copyCoordinates(text) {
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(text).then(() => {
-        showToast(`Copied ${text} to clipboard`, 'success');
-      }).catch(() => {
-        fallbackCopyText(text);
-      });
+      navigator.clipboard
+        .writeText(text)
+        .then(() => {
+          showToast(`Copied ${text} to clipboard`, "success");
+        })
+        .catch(() => {
+          fallbackCopyText(text);
+        });
     } else {
       fallbackCopyText(text);
     }
   }
 
   function fallbackCopyText(text) {
-    const input = document.createElement('textarea');
+    const input = document.createElement("textarea");
     input.value = text;
     document.body.appendChild(input);
     input.select();
-    document.execCommand('copy');
+    document.execCommand("copy");
     document.body.removeChild(input);
-    showToast(`Copied ${text} to clipboard`, 'success');
+    showToast(`Copied ${text} to clipboard`, "success");
   }
 
   // ==========================================================================
@@ -826,33 +938,33 @@
   function bindEvents() {
     // Manual refresh button
     if (DOM.refreshBtn) {
-      DOM.refreshBtn.addEventListener('click', () => {
+      DOM.refreshBtn.addEventListener("click", () => {
         fetchIssues();
       });
     }
 
     // Status filter tabs
-    DOM.tabBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        DOM.tabBtns.forEach(b => b.classList.remove('is-active'));
-        btn.classList.add('is-active');
-        state.filterStatus = btn.getAttribute('data-status') || 'all';
+    DOM.tabBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        DOM.tabBtns.forEach((b) => b.classList.remove("is-active"));
+        btn.classList.add("is-active");
+        state.filterStatus = btn.getAttribute("data-status") || "all";
         renderFeed();
         updateMapMarkers();
       });
     });
 
     // Category type filter boxes
-    DOM.typeBoxes.forEach(box => {
-      box.addEventListener('click', () => {
-        const targetType = box.getAttribute('data-type');
+    DOM.typeBoxes.forEach((box) => {
+      box.addEventListener("click", () => {
+        const targetType = box.getAttribute("data-type");
         if (state.filterType === targetType) {
-          state.filterType = 'all';
-          DOM.typeBoxes.forEach(b => b.classList.remove('is-selected'));
+          state.filterType = "all";
+          DOM.typeBoxes.forEach((b) => b.classList.remove("is-selected"));
         } else {
           state.filterType = targetType;
-          DOM.typeBoxes.forEach(b => b.classList.remove('is-selected'));
-          box.classList.add('is-selected');
+          DOM.typeBoxes.forEach((b) => b.classList.remove("is-selected"));
+          box.classList.add("is-selected");
         }
         renderFeed();
         updateMapMarkers();
@@ -861,10 +973,13 @@
 
     // Search input
     if (DOM.searchInput) {
-      DOM.searchInput.addEventListener('input', (e) => {
+      DOM.searchInput.addEventListener("input", (e) => {
         state.searchQuery = e.target.value;
         if (DOM.clearSearchBtn) {
-          DOM.clearSearchBtn.classList.toggle('is-visible', Boolean(state.searchQuery));
+          DOM.clearSearchBtn.classList.toggle(
+            "is-visible",
+            Boolean(state.searchQuery),
+          );
         }
         renderFeed();
         updateMapMarkers();
@@ -873,10 +988,10 @@
 
     // Clear search
     if (DOM.clearSearchBtn) {
-      DOM.clearSearchBtn.addEventListener('click', () => {
-        DOM.searchInput.value = '';
-        state.searchQuery = '';
-        DOM.clearSearchBtn.classList.remove('is-visible');
+      DOM.clearSearchBtn.addEventListener("click", () => {
+        DOM.searchInput.value = "";
+        state.searchQuery = "";
+        DOM.clearSearchBtn.classList.remove("is-visible");
         renderFeed();
         updateMapMarkers();
       });
@@ -884,12 +999,12 @@
 
     // Fit bounds button
     if (DOM.fitBoundsBtn) {
-      DOM.fitBoundsBtn.addEventListener('click', fitAllBounds);
+      DOM.fitBoundsBtn.addEventListener("click", fitAllBounds);
     }
 
     // Severity heatmap toggle
     if (DOM.heatmapToggleBtn) {
-      DOM.heatmapToggleBtn.addEventListener('click', toggleHeatmap);
+      DOM.heatmapToggleBtn.addEventListener("click", toggleHeatmap);
     }
   }
 
@@ -905,38 +1020,39 @@
   // Helper Utilities
   // ==========================================================================
   function formatIssueType(type) {
-    if (!type) return 'Road Incident';
+    if (!type) return "Road Incident";
     return String(type)
-      .replace(/_/g, ' ')
-      .replace(/\b\w/g, c => c.toUpperCase());
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
   function formatGarbageTelemetry(itemCount, severity) {
     const parts = [];
-    if (itemCount !== undefined && itemCount !== null && itemCount !== '') {
+    if (itemCount !== undefined && itemCount !== null && itemCount !== "") {
       const count = Number(itemCount);
       if (!isNaN(count)) {
-        parts.push(`${count} item${count === 1 ? '' : 's'} detected`);
+        parts.push(`${count} item${count === 1 ? "" : "s"} detected`);
       } else {
         parts.push(`${itemCount} items detected`);
       }
     }
     if (severity) {
       const sevStr = String(severity).trim();
-      const capitalized = sevStr.charAt(0).toUpperCase() + sevStr.slice(1).toLowerCase();
+      const capitalized =
+        sevStr.charAt(0).toUpperCase() + sevStr.slice(1).toLowerCase();
       parts.push(`${capitalized} severity`);
     }
-    return parts.map(escapeHtml).join(' · ');
+    return parts.map(escapeHtml).join(" · ");
   }
 
   function formatTime(isoStr) {
-    if (!isoStr) return 'Recent';
+    if (!isoStr) return "Recent";
     try {
       const d = new Date(isoStr);
       if (isNaN(d.getTime())) return isoStr;
-      return d.toLocaleString('en-IN', {
-        dateStyle: 'medium',
-        timeStyle: 'short'
+      return d.toLocaleString("en-IN", {
+        dateStyle: "medium",
+        timeStyle: "short",
       });
     } catch (e) {
       return isoStr;
@@ -944,45 +1060,46 @@
   }
 
   function formatRelativeTime(isoStr) {
-    if (!isoStr) return 'Just now';
+    if (!isoStr) return "Just now";
     try {
       const d = new Date(isoStr);
       if (isNaN(d.getTime())) return isoStr;
       const diffMs = Date.now() - d.getTime();
       const diffMins = Math.floor(diffMs / 60000);
 
-      if (diffMins < 1) return 'Just now';
-      if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
+      if (diffMins < 1) return "Just now";
+      if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? "s" : ""} ago`;
       const diffHours = Math.floor(diffMins / 60);
-      if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+      if (diffHours < 24)
+        return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
       const diffDays = Math.floor(diffHours / 24);
-      return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+      return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
     } catch (e) {
-      return 'Recent';
+      return "Recent";
     }
   }
 
   function updateSyncTimeDisplay() {
     if (!DOM.syncTimeLabel) return;
     const now = new Date();
-    DOM.syncTimeLabel.textContent = `Synced ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+    DOM.syncTimeLabel.textContent = `Synced ${now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
   }
 
   function escapeHtml(str) {
     return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
-  function showToast(message, type = 'success') {
+  function showToast(message, type = "success") {
     if (!DOM.toastContainer) return;
 
-    const toast = document.createElement('div');
+    const toast = document.createElement("div");
     toast.className = `toast toast-${type}`;
-    const icon = type === 'success' ? ICONS.check : ICONS.default;
+    const icon = type === "success" ? ICONS.check : ICONS.default;
 
     toast.innerHTML = `
       ${icon}
@@ -992,9 +1109,9 @@
     DOM.toastContainer.appendChild(toast);
 
     setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateY(10px)';
-      toast.style.transition = 'all 0.2s ease';
+      toast.style.opacity = "0";
+      toast.style.transform = "translateY(10px)";
+      toast.style.transition = "all 0.2s ease";
       setTimeout(() => toast.remove(), 200);
     }, 3200);
   }
@@ -1004,7 +1121,6 @@
     resolveIssue,
     focusOnMap,
     copyCoordinates,
-    refresh: fetchIssues
+    refresh: fetchIssues,
   };
-
 })();
