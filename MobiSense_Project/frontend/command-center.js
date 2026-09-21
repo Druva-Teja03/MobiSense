@@ -48,7 +48,7 @@
     default: "#64748b",
   };
 
-  const state = { issues: [], map: null, markersLayer: null };
+  const state = { issues: [], map: null, gm: null, markers: [] };
 
   const DOM = {
     liveBadge: document.getElementById("cc-live-badge"),
@@ -303,42 +303,74 @@
   }
 
   function renderMap() {
-    if (!state.map || typeof L === "undefined") return;
-    if (state.markersLayer) state.markersLayer.clearLayers();
-    else state.markersLayer = L.layerGroup().addTo(state.map);
+    if (!state.map || !state.gm) return; // map not ready yet (or key missing)
+    const { AdvancedMarkerElement } = state.gm;
+
+    // Remove the previous markers (map = null takes a marker off the map)
+    state.markers.forEach((m) => (m.map = null));
+    state.markers = [];
 
     state.issues.forEach((issue) => {
-      if (!issue.lat || !issue.lng) return;
+      const lat = parseFloat(issue.lat);
+      const lng = parseFloat(issue.lng);
+      if (isNaN(lat) || isNaN(lng)) return;
+
       const color = CATEGORY_COLOR[issue.type] || CATEGORY_COLOR.default;
       const resolved = (issue.status || "").toLowerCase() === "resolved";
-      const marker = L.circleMarker([issue.lat, issue.lng], {
-        radius: 6,
-        color: color,
-        fillColor: color,
-        fillOpacity: resolved ? 0.25 : 0.85,
-        weight: resolved ? 1 : 2,
+
+      // Small coloured dot — same look as the old Leaflet circleMarker:
+      // solid ring, translucent fill (fainter when resolved).
+      // translateY(50%) centres the dot on the coordinate (Advanced
+      // Markers anchor their bottom-centre by default).
+      const dot = document.createElement("div");
+      dot.style.cssText = [
+        "width: 12px",
+        "height: 12px",
+        "box-sizing: border-box",
+        "border-radius: 50%",
+        `border: ${resolved ? 1 : 2}px solid ${color}`,
+        `background: color-mix(in srgb, ${color} ${resolved ? 25 : 85}%, transparent)`,
+        "transform: translateY(50%)",
+        "cursor: pointer",
+      ].join(";");
+
+      const marker = new AdvancedMarkerElement({
+        map: state.map,
+        position: { lat, lng },
+        content: dot,
+        title: `#${issue.id} ${formatIssueType(issue.type)}`,
+        gmpClickable: true,
       });
-      marker.on("click", () => {
+      marker.addEventListener("gmp-click", () => {
         window.location.href = `dashboard.html?focus=${encodeURIComponent(issue.id)}`;
       });
-      marker.addTo(state.markersLayer);
+      state.markers.push(marker);
     });
   }
 
-  function initMap() {
+  async function initMap() {
     const el = document.getElementById("cc-mini-map");
-    if (!el || typeof L === "undefined") return;
-    state.map = L.map(el, {
-      zoomControl: false,
-      attributionControl: false,
-    }).setView(CONFIG.DEFAULT_CENTER, CONFIG.DEFAULT_ZOOM);
-    L.tileLayer(
-      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
-      {
-        maxZoom: 19,
-        attribution: "Tiles &copy; Esri",
-      },
-    ).addTo(state.map);
+    if (!el) return;
+
+    try {
+      state.gm = await window.MobiMaps.load();
+    } catch (err) {
+      console.warn("Google Maps not available:", err.message);
+      const msg = document.createElement("div");
+      msg.style.cssText =
+        "height: 100%; display: flex; align-items: center; justify-content: center; background: #e2e8f0; color: #475569; font-size: 12.5px; text-align: center; padding: 12px;";
+      msg.textContent = "Map unavailable · " + err.message;
+      el.replaceChildren(msg);
+      return;
+    }
+
+    state.map = new state.gm.Map(el, {
+      center: { lat: CONFIG.DEFAULT_CENTER[0], lng: CONFIG.DEFAULT_CENTER[1] },
+      zoom: CONFIG.DEFAULT_ZOOM,
+      mapId: window.MobiMaps.mapId, // required for Advanced Markers
+      disableDefaultUI: true, // mini preview: no zoom/type/street-view controls
+      clickableIcons: false,
+    });
   }
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -355,8 +387,9 @@
     });
     if (DOM.logoutBtn) DOM.logoutBtn.addEventListener("click", logout);
 
-    initMap();
     fetchIssues();
     setInterval(fetchIssues, 30000);
+    // The map loads asynchronously; once ready, draw the issues fetched so far.
+    initMap().then(renderMap);
   });
 })();

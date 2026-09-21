@@ -10,9 +10,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-  <!-- GIS Mapping Engine: Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-
   <!-- Shared design tokens + application shell -->
   <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="shell.css">
@@ -288,10 +285,13 @@
     </div>
   </div>
 
-  <!-- Leaflet GIS Engine Script -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- Leaflet.heat — severity-weighted heatmap layer (toggle in map overlay) -->
-  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+  <!-- Google Maps: paste your key in maps-config.js (the ONLY place it goes).
+       maps-loader.js then loads the Maps API for this page. -->
+  <script src="maps-config.js"></script>
+  <script src="maps-loader.js"></script>
+  <!-- deck.gl — severity-weighted heatmap drawn on top of the Google map.
+       (Google removed its own HeatmapLayer in Maps JS v3.65, May 2026.) -->
+  <script src="https://unpkg.com/deck.gl@^9.1.0/dist.min.js"></script>
 
   <!-- Shared shell (sidebar collapse, logout) -->
   <script src="shell.js"></script>

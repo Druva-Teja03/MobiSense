@@ -560,7 +560,9 @@ input, select {
 
 .map-overlay-bottom-left {
   position: absolute;
-  bottom: 20px;
+  /* Was 20px. Google's logo + terms sit in the bottom-left corner and must
+     stay visible (Maps Platform terms), so the legend floats above them. */
+  bottom: 40px;
   left: 16px;
   z-index: 800;
   display: flex;

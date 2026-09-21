@@ -47,8 +47,11 @@
     selectedIssueId: null,
     isFetching: false,
     map: null,
-    markersLayer: null,
-    heatLayer: null,
+    gm: null, // Google Maps classes (Map, InfoWindow, ...) once loaded
+    markers: [], // AdvancedMarkerElement instances currently on the map
+    infoWindow: null, // ONE shared InfoWindow, re-used for every popup
+    popupIssueId: null, // issue whose popup is open (survives marker rebuilds)
+    heatOverlay: null, // deck.gl overlay that draws the heatmap
     heatmapOn: false,
     autoRefreshTimer: null,
     lastUpdated: null,
@@ -209,64 +212,97 @@
     if (DOM.logoutBtn) {
       DOM.logoutBtn.addEventListener("click", logout);
     }
-    initMap();
     bindEvents();
     fetchIssues();
     startAutoRefresh();
+
+    // Google Maps loads asynchronously. The feed/stats don't wait for it;
+    // once the map is ready we draw whatever issues have arrived by then.
+    initMap().then(() => {
+      if (!state.map) return; // key missing / offline: feed still works
+      if (state.selectedIssueId) selectIssue(state.selectedIssueId, true);
+      else updateMapMarkers();
+    });
   });
 
   // ==========================================================================
-  // Map Initialization & Management (Leaflet GIS)
+  // Map Initialization & Management (Google Maps)
   // ==========================================================================
-  function initMap() {
+  async function initMap() {
     const mapEl = document.getElementById("map-container");
     if (!mapEl) return;
 
-    if (typeof L === "undefined") {
-      console.warn("Leaflet not loaded. Rendering vector fallback map.");
+    try {
+      state.gm = await window.MobiMaps.load();
+    } catch (err) {
+      console.warn("Google Maps not available:", err.message);
       mapEl.innerHTML = `
-        <div style="height: 100%; display: flex; align-items: center; justify-content: center; background: #e2e8f0; color: #475569; font-weight: 500;">
-          GIS Map Viewport Active · Telemetry synced with live coordinates
+        <div style="height: 100%; display: flex; align-items: center; justify-content: center; background: #e2e8f0; color: #475569; font-weight: 500; text-align: center; padding: 16px;">
+          Map unavailable · ${escapeHtml(err.message)}
         </div>
       `;
       return;
     }
 
-    // Initialize Map with clean civic style
-    state.map = L.map("map-container", {
-      center: CONFIG.DEFAULT_CENTER,
+    const { Map, InfoWindow } = state.gm;
+
+    state.map = new Map(mapEl, {
+      center: { lat: CONFIG.DEFAULT_CENTER[0], lng: CONFIG.DEFAULT_CENTER[1] },
       zoom: CONFIG.DEFAULT_ZOOM,
+      mapId: window.MobiMaps.mapId, // required for Advanced Markers
       zoomControl: true,
-      attributionControl: false,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: false, // top-right is taken by our own map buttons
+      clickableIcons: false, // don't open Google's own POI popups
     });
 
-    // OpenStreetMap tile layer (100% free, zero API key required)
-    L.tileLayer(
-      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
-      {
-        maxZoom: 19,
-        attribution: "Tiles &copy; Esri",
-      },
-    ).addTo(state.map);
+    state.infoWindow = new InfoWindow();
 
-    // Layer group for dynamic markers
-    state.markersLayer = L.layerGroup().addTo(state.map);
+    // Clicking empty map closes the popup (same as Leaflet did).
+    state.map.addListener("click", () => {
+      state.infoWindow.close();
+      state.popupIssueId = null;
+    });
 
     // Coordinate display listener
-    state.map.on("move", () => {
+    state.map.addListener("center_changed", () => {
       const center = state.map.getCenter();
-      if (DOM.mapCenterCoords) {
-        DOM.mapCenterCoords.textContent = `${center.lat.toFixed(4)}°N, ${center.lng.toFixed(4)}°E`;
+      if (DOM.mapCenterCoords && center) {
+        DOM.mapCenterCoords.textContent = `${center.lat().toFixed(4)}°N, ${center.lng().toFixed(4)}°E`;
       }
     });
   }
 
+  // Google's fitBounds() has no maxZoom option (Leaflet's did), so we
+  // clamp the zoom ourselves once the map has settled.
+  function fitToBounds(bounds, padding, maxZoom) {
+    state.map.fitBounds(bounds, padding);
+    if (maxZoom) {
+      state.gm.event.addListenerOnce(state.map, "idle", () => {
+        if (state.map.getZoom() > maxZoom) state.map.setZoom(maxZoom);
+      });
+    }
+  }
+
+  function openIssuePopup(marker, contentEl) {
+    state.infoWindow.setContent(contentEl);
+    state.infoWindow.open({ anchor: marker, map: state.map });
+  }
+
   // Render Map Markers based on current issues
   function updateMapMarkers() {
-    if (!state.map || !state.markersLayer) return;
+    if (!state.map || !state.gm) return;
+    const { AdvancedMarkerElement, LatLngBounds } = state.gm;
 
-    state.markersLayer.clearLayers();
-    const bounds = L.latLngBounds();
+    // Remove the previous markers (map = null takes a marker off the map).
+    // The popup is closed here and re-opened below if it belongs to a marker
+    // that still exists — otherwise a 30s auto-refresh would kill it.
+    state.infoWindow.close();
+    state.markers.forEach((m) => (m.map = null));
+    state.markers = [];
+
+    const bounds = new LatLngBounds();
     let hasValidPoints = false;
 
     const filtered = getFilteredIssues();
@@ -313,14 +349,22 @@
         </div>
       `;
 
-      const customIcon = L.divIcon({
-        className: "custom-div-icon",
-        html: iconHtml,
-        iconSize: [30, 30],
-        iconAnchor: [15, 15],
-      });
+      // Advanced Markers anchor the BOTTOM-centre of their content on the
+      // coordinate. translateY(50%) moves the round 30px pin so its CENTRE
+      // sits on the coordinate (same as Leaflet's iconAnchor [15, 15]).
+      // The wrapper carries the shift so .is-active can still use transform.
+      const pinWrap = document.createElement("div");
+      pinWrap.style.transform = "translateY(50%)";
+      pinWrap.innerHTML = iconHtml.trim();
 
-      const marker = L.marker([lat, lng], { icon: customIcon });
+      const marker = new AdvancedMarkerElement({
+        map: state.map,
+        position: { lat, lng },
+        content: pinWrap,
+        title: formatIssueType(issue.type),
+        gmpClickable: true,
+        zIndex: isSelected ? 999 : 1,
+      });
 
       // Popup Content
       let telemetryPopupHtml = "";
@@ -363,19 +407,28 @@
         </div>
       `;
 
-      marker.bindPopup(popupHtml);
+      const popupEl = document.createElement("div");
+      popupEl.innerHTML = popupHtml;
 
-      marker.on("click", () => {
+      marker.addEventListener("gmp-click", () => {
+        state.popupIssueId = String(issue.id);
+        openIssuePopup(marker, popupEl);
         selectIssue(issue.id, false);
       });
 
-      state.markersLayer.addLayer(marker);
-      bounds.extend([lat, lng]);
+      // selectIssue() above rebuilds every marker, so re-open the popup on
+      // the freshly created marker for the issue the user clicked.
+      if (state.popupIssueId === String(issue.id)) {
+        openIssuePopup(marker, popupEl);
+      }
+
+      state.markers.push(marker);
+      bounds.extend({ lat, lng });
       hasValidPoints = true;
     });
 
     if (hasValidPoints && !state.selectedIssueId) {
-      state.map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+      fitToBounds(bounds, 40, 16);
     }
 
     updateHeatmap();
@@ -385,7 +438,15 @@
   // Severity Heatmap Layer (toggle button, top-right map overlay)
   // ==========================================================================
   function updateHeatmap() {
-    if (!state.map || typeof L.heatLayer !== "function") return;
+    if (!state.map) return;
+
+    // Google REMOVED its own HeatmapLayer in Maps JS v3.65 (May 2026).
+    // Google's recommended replacement is deck.gl, drawn as an overlay
+    // on top of the Google map (script tag is in dashboard.html).
+    if (typeof deck === "undefined" || !deck.GoogleMapsOverlay) {
+      if (state.heatmapOn) console.warn("deck.gl not loaded — heatmap unavailable.");
+      return;
+    }
 
     // Heatmap always reflects UNRESOLVED issues only — a resolved pothole
     // shouldn't still glow red on a "where's the danger right now" view.
@@ -395,28 +456,41 @@
         const lat = parseFloat(issue.centroid_lat ?? issue.lat);
         const lng = parseFloat(issue.centroid_lng ?? issue.lng);
         if (isNaN(lat) || isNaN(lng)) return null;
-        return [lat, lng, heatWeightOf(issue)];
+        return { position: [lng, lat], weight: heatWeightOf(issue) }; // deck.gl wants [lng, lat]
       })
       .filter(Boolean);
 
-    if (state.heatLayer) {
-      state.map.removeLayer(state.heatLayer);
-      state.heatLayer = null;
+    if (!state.heatOverlay) {
+      state.heatOverlay = new deck.GoogleMapsOverlay({ layers: [] });
+      state.heatOverlay.setMap(state.map);
     }
 
-    if (state.heatmapOn && points.length) {
-      state.heatLayer = L.heatLayer(points, {
-        radius: 32,
-        blur: 24,
-        maxZoom: 17,
-        gradient: {
-          0.3: "#22c55e",
-          0.55: "#f59e0b",
-          0.85: "#ef4444",
-          1.0: "#b91c1c",
-        },
-      }).addTo(state.map);
-    }
+    state.heatOverlay.setProps({
+      layers:
+        state.heatmapOn && points.length
+          ? [
+              new deck.HeatmapLayer({
+                id: "severity-heatmap",
+                data: points,
+                getPosition: (d) => d.position,
+                getWeight: (d) => d.weight,
+                aggregation: "SUM",
+                radiusPixels: 50,
+                intensity: 1,
+                threshold: 0.05,
+                // same green -> amber -> red scale the Leaflet heatmap used
+                colorRange: [
+                  [34, 197, 94, 60],
+                  [34, 197, 94, 140],
+                  [245, 158, 11, 180],
+                  [239, 68, 68, 210],
+                  [185, 28, 28, 235],
+                  [153, 27, 27, 255],
+                ],
+              }),
+            ]
+          : [],
+    });
   }
 
   function toggleHeatmap() {
@@ -854,6 +928,8 @@
   // ==========================================================================
   function selectIssue(id, zoomMap = true) {
     state.selectedIssueId = id;
+    // Picked from the list (not by clicking a pin): no map popup.
+    if (zoomMap) state.popupIssueId = null;
 
     // Highlight card in feed
     document.querySelectorAll(".issue-card").forEach((card) => {
@@ -871,7 +947,8 @@
       const lat = parseFloat(issue.lat);
       const lng = parseFloat(issue.lng);
       if (!isNaN(lat) && !isNaN(lng)) {
-        state.map.setView([lat, lng], 16, { animate: true });
+        state.map.panTo({ lat, lng });
+        state.map.setZoom(16);
       }
     }
 
@@ -881,29 +958,34 @@
   function focusOnMap(id, lat, lng) {
     selectIssue(id, true);
     if (state.map && !isNaN(lat) && !isNaN(lng)) {
-      state.map.flyTo([lat, lng], 17, { duration: 0.8 });
+      state.map.panTo({ lat, lng });
+      state.map.setZoom(17);
     }
   }
 
   function fitAllBounds() {
-    if (!state.map) return;
+    if (!state.map || !state.gm) return;
     const filtered = getFilteredIssues();
-    const bounds = L.latLngBounds();
+    const bounds = new state.gm.LatLngBounds();
     let hasPoints = false;
 
     filtered.forEach((i) => {
       const lat = parseFloat(i.lat);
       const lng = parseFloat(i.lng);
       if (!isNaN(lat) && !isNaN(lng)) {
-        bounds.extend([lat, lng]);
+        bounds.extend({ lat, lng });
         hasPoints = true;
       }
     });
 
     if (hasPoints) {
-      state.map.fitBounds(bounds, { padding: [50, 50] });
+      fitToBounds(bounds, 50);
     } else {
-      state.map.setView(CONFIG.DEFAULT_CENTER, CONFIG.DEFAULT_ZOOM);
+      state.map.setCenter({
+        lat: CONFIG.DEFAULT_CENTER[0],
+        lng: CONFIG.DEFAULT_CENTER[1],
+      });
+      state.map.setZoom(CONFIG.DEFAULT_ZOOM);
     }
   }
 
