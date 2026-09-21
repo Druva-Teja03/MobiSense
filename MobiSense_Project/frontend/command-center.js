@@ -91,6 +91,11 @@
     DOM.profileAvatarBtn.setAttribute("aria-expanded", String(nextOpen));
   }
 
+  // "field_officer" -> "field officer" (the pill capitalises it via CSS)
+  function formatRole(role) {
+    return role ? String(role).replace(/_/g, " ") : "—";
+  }
+
   async function loadProfile() {
     const initial = getInitial(CURRENT_USER.full_name);
     if (DOM.profileAvatarInitial)
@@ -99,7 +104,7 @@
       DOM.profileAvatarInitialLg.textContent = initial;
     if (DOM.profileName)
       DOM.profileName.textContent = CURRENT_USER.full_name || "Account";
-    if (DOM.profileRole) DOM.profileRole.textContent = CURRENT_USER.role || "—";
+    if (DOM.profileRole) DOM.profileRole.textContent = formatRole(CURRENT_USER.role);
     try {
       const res = await fetch(
         `${CONFIG.API_URL.replace("/issues", "")}/users/me`,
@@ -113,16 +118,18 @@
       const profile = await res.json();
       if (DOM.profileName)
         DOM.profileName.textContent = profile.full_name || "—";
-      if (DOM.profileRole) DOM.profileRole.textContent = profile.role || "—";
+      if (DOM.profileRole) DOM.profileRole.textContent = formatRole(profile.role);
       if (DOM.profileEmail) DOM.profileEmail.textContent = profile.email || "—";
       if (DOM.profileJobTitle)
         DOM.profileJobTitle.textContent = profile.job_title || "—";
       if (DOM.profileGovtId)
         DOM.profileGovtId.textContent = profile.govt_id_number || "—";
       if (DOM.profileJoined && profile.created_at) {
-        DOM.profileJoined.textContent = new Date(
-          profile.created_at,
-        ).toLocaleDateString();
+        DOM.profileJoined.textContent = new Date(profile.created_at).toLocaleDateString("en-IN", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        });
       }
     } catch (err) {
       /* header still shows login-time values */

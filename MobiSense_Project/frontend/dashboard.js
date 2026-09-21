@@ -142,6 +142,11 @@
     DOM.profileAvatarBtn.setAttribute("aria-expanded", String(nextOpen));
   }
 
+  // "field_officer" -> "field officer" (the pill capitalises it via CSS)
+  function formatRole(role) {
+    return role ? String(role).replace(/_/g, " ") : "—";
+  }
+
   async function loadProfile() {
     // Show what we already know instantly (from login/signup response),
     // then fill in the rest once /users/me responds.
@@ -152,7 +157,7 @@
       DOM.profileAvatarInitialLg.textContent = initial;
     if (DOM.profileName)
       DOM.profileName.textContent = CURRENT_USER.full_name || "Account";
-    if (DOM.profileRole) DOM.profileRole.textContent = CURRENT_USER.role || "—";
+    if (DOM.profileRole) DOM.profileRole.textContent = formatRole(CURRENT_USER.role);
 
     try {
       const res = await fetch(
@@ -170,16 +175,18 @@
 
       if (DOM.profileName)
         DOM.profileName.textContent = profile.full_name || "—";
-      if (DOM.profileRole) DOM.profileRole.textContent = profile.role || "—";
+      if (DOM.profileRole) DOM.profileRole.textContent = formatRole(profile.role);
       if (DOM.profileEmail) DOM.profileEmail.textContent = profile.email || "—";
       if (DOM.profileJobTitle)
         DOM.profileJobTitle.textContent = profile.job_title || "—";
       if (DOM.profileGovtId)
         DOM.profileGovtId.textContent = profile.govt_id_number || "—";
       if (DOM.profileJoined && profile.created_at) {
-        DOM.profileJoined.textContent = new Date(
-          profile.created_at,
-        ).toLocaleDateString();
+        DOM.profileJoined.textContent = new Date(profile.created_at).toLocaleDateString("en-IN", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        });
       }
       const initialFromServer = getInitial(profile.full_name);
       if (DOM.profileAvatarInitial)
